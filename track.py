@@ -189,7 +189,7 @@ def run(args):
         # TODO: implement adaptive threshold
         target_conf = detections.confidence.max() * 0.7
         num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
-        target_sim = torch.mean(torch.sort(sims, descending=True)[0][1:num_k])
+        target_sim = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
 
         rm_list = []
         for idx, conf in enumerate(detections.confidence):
@@ -200,6 +200,7 @@ def run(args):
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         embs = delete_by_index(embs, rm_list)
+        sims = delete_by_index(sims, rm_list)
         max_idx = detections.confidence.argmax()
 
         outputs = tracker.update(detections, embs.cpu(), image)

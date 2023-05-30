@@ -217,30 +217,30 @@ def parse_requirements(fname="requirements.txt", with_version=True):
 
 
 if __name__ == "__main__":
-    print(f"Building wheel {package_name}-{version}")
+    # print(f"Building wheel {package_name}-{version}")
 
-    with open("LICENSE", "r", encoding="utf-8") as f:
-        license = f.read()
+    # with open("LICENSE", "r", encoding="utf-8") as f:
+    #     license = f.read()
 
-    write_version_file()
+    # write_version_file()
 
-    setup(
-        name="groundingdino",
-        version="0.1.0",
-        author="International Digital Economy Academy, Shilong Liu",
-        url="https://github.com/IDEA-Research/GroundingDINO",
-        description="open-set object detector",
-        license=license,
-        install_requires=parse_requirements("requirements.txt"),
-        packages=find_packages(
-            exclude=(
-                "configs",
-                "tests",
-            )
-        ),
-        ext_modules=get_extensions(),
-        cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
-    )
+    # setup(
+    #     name="groundingdino",
+    #     version="0.1.0",
+    #     author="International Digital Economy Academy, Shilong Liu",
+    #     url="https://github.com/IDEA-Research/GroundingDINO",
+    #     description="open-set object detector",
+    #     license=license,
+    #     install_requires=parse_requirements("requirements.txt"),
+    #     packages=find_packages(
+    #         exclude=(
+    #             "configs",
+    #             "tests",
+    #         )
+    #     ),
+    #     ext_modules=get_extensions(),
+    #     cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
+    # )
 
 
     download_file("https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth", "./weights")
