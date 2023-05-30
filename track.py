@@ -1,5 +1,6 @@
 import argparse
 import numpy as np
+from numpy import random
 from pathlib import Path
 
 import sys
@@ -45,6 +46,11 @@ bind_model.to(device)
 # Define funcs
 def post_process_detect(dets, sims):
     pass
+
+def delete_by_index(tensor, indices):
+    mask = torch.ones(len(tensor), dtype=torch.bool)
+    mask[indices] = False
+    return tensor[mask]
 
 def load_and_transform_vision_data_from_pil_image(img_list, device):
     if img_list is None:
@@ -92,6 +98,19 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings  # [113, 1]
 
+def plot_one_box(x, img, color=None, label=None, line_thickness=3):
+    # Plots one bounding box on image img
+    tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
+    color = color or [random.randint(0, 255) for _ in range(3)]
+    c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
+    cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+    if label:
+        tf = max(tl - 1, 1)  # font thickness
+        t_size = cv2.getTextSize(label, 0, fontScale=tl / 3.5, thickness=tf)[0]
+        c2 = c1[0] + t_size[0], c1[1] - t_size[1] - 3
+        cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
+        cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+
 @torch.no_grad()
 def run(args):
 
@@ -119,6 +138,7 @@ def run(args):
     step = 0
 
     box_annotator = sv.BoxAnnotator()
+    color = [random.randint(0, 255) for _ in range(3)]
 
     for img in sorted(os.listdir(args.source)):
     
@@ -131,7 +151,6 @@ def run(args):
         print('processing:', img_dir)
 
         image = cv2.imread(img_dir)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         # detect objects
         detections, phrases, feature = grounding_dino_model.predict_with_caption(
@@ -155,6 +174,7 @@ def run(args):
                 rm_list.append(box_id)
 
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         max_idx = detections.confidence.argmax()
 
         # Sim score theo ImageBind
@@ -165,7 +185,47 @@ def run(args):
 
         sims, embs = retriev_vision_and_vision(crops, max_idx)
         # frame_idx += 1
-        outputs = tracker.update(detections.xyxy, embs, image)
+
+        # TODO: implement adaptive threshold
+        target_conf = detections.confidence.max() * 0.7
+        num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
+        target_sim = torch.mean(torch.sort(sims, descending=True)[0][1:num_k])
+
+        rm_list = []
+        for idx, conf in enumerate(detections.confidence):
+            if conf < target_conf:
+                if sims[idx] < target_sim:
+                    rm_list.append(idx)
+        
+        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+        embs = delete_by_index(embs, rm_list)
+        max_idx = detections.confidence.argmax()
+
+        outputs = tracker.update(detections, embs.cpu(), image)
+
+        if len(outputs) > 0:
+            for j, (output, conf) in enumerate(zip(outputs, detections.confidence)):
+    
+                bboxes = output[0:4]
+                id = output[4]
+                cls = output[5]
+
+                # if save_txt:
+                #     # to MOT format
+                #     bbox_left = output[0]
+                #     bbox_top = output[1]
+                #     bbox_w = output[2] - output[0]
+                #     bbox_h = output[3] - output[1]
+                #     # Write MOT compliant results to file
+                #     with open(txt_path + '.txt', 'a') as f:
+                #         f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
+                                                              #  bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
+
+                c = int(cls)  # integer class
+                id = int(id)  # integer id
+                label = (f'{id} {conf:.2f} {sims[j]:.2f}')
+                plot_one_box(bboxes, image, label=label, color=color, line_thickness=2)
 
         # # Sim score theo GDino
         # result = feature_sim_from_gdino(detections.xyxy, feature, max_idx)
@@ -173,14 +233,14 @@ def run(args):
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
 
-        labels = []
-        for i, det in enumerate(detections.xyxy):
-            labels.append(f"{i} {detections.confidence[i]:0.2f} {sims[i]:0.04f}")
+        # labels = []
+        # for i, det in enumerate(detections.xyxy):
+        #     labels.append(f"{i} {detections.confidence[i]:0.2f} {sims[i]:0.04f}")
 
-        annotated_image = box_annotator.annotate(scene=image.copy(), detections=detections, labels=labels)
+        # annotated_image = box_annotator.annotate(scene=image.copy(), detections=detections, labels=labels)
 
         img_path = os.path.join(dest_folder, img)
-        cv2.imwrite(img_path, annotated_image)
+        cv2.imwrite(img_path, image)
 
 def parse_opt():
     parser = argparse.ArgumentParser()

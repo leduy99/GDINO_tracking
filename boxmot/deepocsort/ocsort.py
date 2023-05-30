@@ -366,15 +366,13 @@ class OCSort(object):
         Returns the a similar array, where the last column is the object ID.
         NOTE: The number of objects returned may differ from the number of detections provided.
         """
-        xyxys = dets[:, 0:4]
-        scores = dets[:, 4]
-        clss = dets[:, 5]
+        xyxys = dets.xyxy
+        scores = dets.confidence
+        clss = np.zeros((len(xyxys), 1))
         
-        classes = clss.numpy()
-        xyxys = xyxys.numpy()
-        scores = scores.numpy()
+        classes = clss
         
-        dets = dets[:, 0:6].numpy()
+        dets = np.concatenate((xyxys, np.expand_dims(scores, axis=1), clss), axis=1)
         remain_inds = scores > self.det_thresh
         dets = dets[remain_inds]
         self.height, self.width = img_numpy.shape[:2]
