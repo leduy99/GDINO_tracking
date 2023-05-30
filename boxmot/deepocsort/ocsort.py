@@ -318,9 +318,7 @@ ASSO_FUNCS = {
 class OCSort(object):
     def __init__(
         self,
-        model_weights,
         device,
-        fp16,
         det_thresh,
         max_age=30,
         min_hits=3,
@@ -354,14 +352,13 @@ class OCSort(object):
         self.aw_param = aw_param
         KalmanBoxTracker.count = 0
 
-        self.embedder = ReIDDetectMultiBackend(weights=model_weights, device=device, fp16=fp16)
         self.cmc = CMCComputer()
         self.embedding_off = embedding_off
         self.cmc_off = cmc_off
         self.aw_off = aw_off
         self.new_kf_off = new_kf_off
 
-    def update(self, dets, img_numpy, tag='blub'):
+    def update(self, dets, embs, img_numpy, tag='blub'):
         """
         Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -390,9 +387,7 @@ class OCSort(object):
         if self.embedding_off or dets.shape[0] == 0:
             dets_embs = np.ones((dets.shape[0], 1))
         else:
-            # (Ndets x X) [512, 1024, 2048]
-            #dets_embs = self.embedder.compute_embedding(img_numpy, dets[:, :4], tag)
-            dets_embs = self._get_features(dets[:, :4], img_numpy)
+            dets_embs = embs
 
         # CMC
         if not self.cmc_off:

@@ -11,7 +11,7 @@ def get_tracker_config(tracker_type):
     return tracking_config
     
 
-def create_tracker(tracker_type, tracker_config, reid_weights, device, half):
+def create_tracker(tracker_type, tracker_config, device):
     
     cfg = get_config()
     cfg.merge_from_file(tracker_config)
@@ -19,9 +19,7 @@ def create_tracker(tracker_type, tracker_config, reid_weights, device, half):
     if tracker_type == 'strongsort':
         from boxmot.strongsort.strong_sort import StrongSORT
         strongsort = StrongSORT(
-            reid_weights,
             device,
-            half,
             max_dist=cfg.strongsort.max_dist,
             max_iou_dist=cfg.strongsort.max_iou_dist,
             max_age=cfg.strongsort.max_age,
@@ -61,9 +59,7 @@ def create_tracker(tracker_type, tracker_config, reid_weights, device, half):
     elif tracker_type == 'botsort':
         from boxmot.botsort.bot_sort import BoTSORT
         botsort = BoTSORT(
-            reid_weights,
             device,
-            half,
             track_high_thresh=cfg.botsort.track_high_thresh,
             new_track_thresh=cfg.botsort.new_track_thresh,
             track_buffer =cfg.botsort.track_buffer,
@@ -78,9 +74,7 @@ def create_tracker(tracker_type, tracker_config, reid_weights, device, half):
     elif tracker_type == 'deepocsort':
         from boxmot.deepocsort.ocsort import OCSort
         deepocsort = OCSort(
-            reid_weights,
             device,
-            half,
             det_thresh=cfg.deepocsort.det_thresh,
             max_age=cfg.deepocsort.max_age,
             min_hits=cfg.deepocsort.min_hits,
