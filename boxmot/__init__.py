@@ -2,7 +2,6 @@ __version__ = '10.0.10'
 
 from pathlib import Path
 
-from boxmot.ImageBind import *
 from boxmot.strongsort.strong_sort import StrongSORT
 from boxmot.ocsort.ocsort import OCSort as OCSORT
 from boxmot.bytetrack.byte_tracker import BYTETracker
