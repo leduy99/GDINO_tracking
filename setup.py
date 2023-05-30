@@ -40,6 +40,41 @@ try:
 except Exception:
     pass
 
+def download_file(url, directory, filename=None):
+  """Downloads a file from a URL and saves it to a local file.
+
+  Args:
+    url: The URL of the file to download.
+    filename: The name of the file to save the file to. If not specified, the filename will be determined from the URL.
+
+  Returns:
+    None.
+  """
+  if not os.path.exists(directory):
+      os.makedirs(directory)
+
+  # Import the requests module.
+  import requests
+
+  # Make a request to the URL and get the response.
+  response = requests.get(url)
+
+  # Check if the response was successful.
+  if response.status_code == 200:
+    # If no filename was specified, use the filename from the URL.
+    if filename is None:
+      filename = url.split('/')[-1]
+
+    file_dir = os.path.join(directory, filename)
+
+    # Create a file object for the output file.
+    with open(file_dir, 'wb') as f:
+      # Write the response content to the file.
+      f.write(response.content)
+  else:
+    # Raise an error if the response was not successful.
+    raise Exception('Error downloading file: {}'.format(response.status_code))
+
 
 def write_version_file():
     version_path = os.path.join(cwd, "groundingdino", "version.py")
@@ -206,3 +241,6 @@ if __name__ == "__main__":
         ext_modules=get_extensions(),
         cmdclass={"build_ext": torch.utils.cpp_extension.BuildExtension},
     )
+
+
+    download_file("https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha2/groundingdino_swinb_cogcoor.pth", "./weights")
