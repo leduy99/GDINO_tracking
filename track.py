@@ -115,9 +115,14 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
 @torch.no_grad()
 def run(args):
 
-    dest_folder = os.path.join(args.save_dir, args.source.split('/')[-3])
+    folder_name = args.source.split('/')[-3]
+    dest_folder = os.path.join(args.save_dir, folder_name)
     if not os.path.exists(dest_folder):
         os.makedirs(dest_folder)
+
+    # Create text path and clear content in text file
+    txt_path = os.path.join(dest_folder, folder_name + '.txt')
+    open(txt_path, 'w').close()
 
     # Init Tracker
     tracking_config = \
@@ -136,16 +141,19 @@ def run(args):
     detections = None
     ori_image = None
     image = None
-    step = 0
+    frame_idx = 0
 
     box_annotator = sv.BoxAnnotator()
     color = [204, 0, 102]
 
     for img in sorted(os.listdir(args.source)):
     
-        step += 1
-        if step < args.start_frame:
+        #Option for tracking on a snippet
+        if frame_idx < args.start_frame:
             continue
+
+        if (frame_idx > args.end_frame) and (args.end_frame != 0):
+            break
 
         # load image
         img_dir = os.path.join(args.source, img)
@@ -157,7 +165,7 @@ def run(args):
         detections, phrases, feature = grounding_dino_model.predict_with_caption(
             image=image, 
             caption=args.text_prompt, 
-            box_threshold=0.2, 
+            box_threshold=0.18, 
             text_threshold=0.2
         )
 
@@ -185,10 +193,9 @@ def run(args):
             crops.append(crop)
 
         sims, embs = retriev_vision_and_vision(crops, max_idx)
-        # frame_idx += 1
 
         # Adaptive Threshold
-        target_conf = (detections.confidence.max() - 0.2) * 0.3 + 0.2
+        target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
         num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
         target_sim = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
 
@@ -215,16 +222,16 @@ def run(args):
                 cls = output[6]
                 sim = output[7]
 
-                # if save_txt:
-                #     # to MOT format
-                #     bbox_left = output[0]
-                #     bbox_top = output[1]
-                #     bbox_w = output[2] - output[0]
-                #     bbox_h = output[3] - output[1]
-                #     # Write MOT compliant results to file
-                #     with open(txt_path + '.txt', 'a') as f:
-                #         f.write(('%g ' * 10 + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
-                                                              #  bbox_top, bbox_w, bbox_h, -1, -1, -1, i))
+                if args.save_txt:
+                    # to MOT format
+                    bbox_left = output[0]
+                    bbox_top = output[1]
+                    bbox_w = output[2] - output[0]
+                    bbox_h = output[3] - output[1]
+                    # Write MOT compliant results to file
+                    with open(txt_path, 'a') as f:
+                        f.write(('%g ' * 10 + '\n') % (frame_idx, id, bbox_left,  # MOT format
+                                                               bbox_top, bbox_w, bbox_h, -1, -1, -1, -1))
 
                 c = int(cls)  # integer class
                 id = int(id)  # integer id
@@ -245,16 +252,17 @@ def run(args):
 
         img_path = os.path.join(dest_folder, img)
         cv2.imwrite(img_path, image)
+        frame_idx += 1
 
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--tracking-method', type=str, default='deepocsort', help='deepocsort, botsort, strongsort, ocsort, bytetrack')
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
-    parser.add_argument('--save-txt', action='store_true', help='save tracking results in a txt file')
+    parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBind')
     parser.add_argument('--text-prompt', type=str, default='red object')
-    parser.add_argument('--start-frame', type=int, default=1)
-    parser.add_argument('--end-frame', type=int, default=100)
+    parser.add_argument('--start-frame', type=int, default=0)
+    parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()
     opt = parser.parse_args()
     print_args(vars(opt))
