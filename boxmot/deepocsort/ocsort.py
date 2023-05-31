@@ -93,7 +93,7 @@ class KalmanBoxTracker(object):
 
     count = 0
 
-    def __init__(self, bbox, cls, delta_t=3, orig=False, emb=None, alpha=0, new_kf=False):
+    def __init__(self, bbox, cls, sim, delta_t=3, orig=False, emb=None, alpha=0, new_kf=False):
         """
         Initialises a tracker using initial bounding box.
 
@@ -106,6 +106,7 @@ class KalmanBoxTracker(object):
         self.cls = cls
         
         self.conf = bbox[-1]
+        self.sim = sim
         self.new_kf = new_kf
         if new_kf:
             self.kf = KalmanFilter(dim_x=8, dim_z=4)
@@ -358,7 +359,7 @@ class OCSort(object):
         self.aw_off = aw_off
         self.new_kf_off = new_kf_off
 
-    def update(self, dets, embs, img_numpy, tag='blub'):
+    def update(self, dets, sims, embs, img_numpy, tag='blub'):
         """
         Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -372,7 +373,7 @@ class OCSort(object):
         
         classes = clss
         
-        dets = np.concatenate((xyxys, np.expand_dims(scores, axis=1), clss), axis=1)
+        dets = np.concatenate((xyxys, np.expand_dims(scores, axis=1), clss, np.expand_dims(sims, axis=1)), axis=1)
         remain_inds = scores > self.det_thresh
         dets = dets[remain_inds]
         self.height, self.width = img_numpy.shape[:2]
@@ -489,7 +490,7 @@ class OCSort(object):
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
             trk = KalmanBoxTracker(
-                dets[i, :5], dets[i, 5], delta_t=self.delta_t, emb=dets_embs[i], alpha=dets_alpha[i], new_kf=not self.new_kf_off
+                dets[i, :5], dets[i, 5], dets[i, 6], delta_t=self.delta_t, emb=dets_embs[i], alpha=dets_alpha[i], new_kf=not self.new_kf_off
             )
             self.trackers.append(trk)
         i = len(self.trackers)
@@ -504,14 +505,14 @@ class OCSort(object):
                 d = trk.last_observation[:4]
             if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
                 # +1 as MOT benchmark requires positive
-                ret.append(np.concatenate((d, [trk.id + 1], [trk.conf], [trk.cls])).reshape(1, -1))
+                ret.append(np.concatenate((d, [trk.id + 1], [trk.conf], [trk.cls], [trk.sim])).reshape(1, -1))
             i -= 1
             # remove dead tracklet
             if trk.time_since_update > self.max_age:
                 self.trackers.pop(i)
         if len(ret) > 0:
             return np.concatenate(ret)
-        return np.empty((0, 5))
+        return np.empty((0, 8))
     
     def _xywh_to_xyxy(self, bbox_xywh):
         x, y, w, h = bbox_xywh
@@ -631,7 +632,7 @@ class OCSort(object):
             if trk.time_since_update < 1:
                 if (self.frame_count <= self.min_hits) or (trk.hit_streak >= self.min_hits):
                     # id+1 as MOT benchmark requires positive
-                    ret.append(np.concatenate((d, [trk.id + 1], [trk.conf], [trk.cls])).reshape(1, -1))
+                    ret.append(np.concatenate((d, [trk.id + 1], [trk.conf], [trk.cls], [trk.sim])).reshape(1, -1))
                 if trk.hit_streak == self.min_hits:
                     # Head Padding (HP): recover the lost steps during initializing the track
                     for prev_i in range(self.min_hits - 1):
@@ -654,7 +655,7 @@ class OCSort(object):
 
         if len(ret) > 0:
             return np.concatenate(ret)
-        return np.empty((0, 7))
+        return np.empty((0, 8))
 
     def dump_cache(self):
         self.cmc.dump_cache()

@@ -104,12 +104,13 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     color = color or [random.randint(0, 255) for _ in range(3)]
     c1, c2 = (int(x[0]), int(x[1])), (int(x[2]), int(x[3]))
     cv2.rectangle(img, c1, c2, color, thickness=tl, lineType=cv2.LINE_AA)
+
     if label:
         tf = max(tl - 1, 1)  # font thickness
         t_size = cv2.getTextSize(label, 0, fontScale=tl / 3.5, thickness=tf)[0]
         c2 = c1[0] + t_size[0], c1[1] - t_size[1] - 3
         cv2.rectangle(img, c1, c2, color, -1, cv2.LINE_AA)  # filled
-        cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+        cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3.5, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
 @torch.no_grad()
 def run(args):
@@ -138,7 +139,7 @@ def run(args):
     step = 0
 
     box_annotator = sv.BoxAnnotator()
-    color = [random.randint(0, 255) for _ in range(3)]
+    color = [204, 0, 102]
 
     for img in sorted(os.listdir(args.source)):
     
@@ -156,7 +157,7 @@ def run(args):
         detections, phrases, feature = grounding_dino_model.predict_with_caption(
             image=image, 
             caption=args.text_prompt, 
-            box_threshold=0.15, 
+            box_threshold=0.2, 
             text_threshold=0.2
         )
 
@@ -186,8 +187,8 @@ def run(args):
         sims, embs = retriev_vision_and_vision(crops, max_idx)
         # frame_idx += 1
 
-        # TODO: implement adaptive threshold
-        target_conf = detections.confidence.max() * 0.7
+        # Adaptive Threshold
+        target_conf = (detections.confidence.max() - 0.2) * 0.3 + 0.2
         num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
         target_sim = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
 
@@ -200,17 +201,19 @@ def run(args):
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         embs = delete_by_index(embs, rm_list)
-        sims = delete_by_index(sims, rm_list)
+        sims = delete_by_index(sims, rm_list).cpu().detach().numpy()
         max_idx = detections.confidence.argmax()
 
-        outputs = tracker.update(detections, embs.cpu(), image)
+        outputs = tracker.update(detections, sims, embs.cpu(), image)
 
         if len(outputs) > 0:
-            for j, (output, conf) in enumerate(zip(outputs, detections.confidence)):
+            for j, output in enumerate(outputs):
     
                 bboxes = output[0:4]
                 id = output[4]
-                cls = output[5]
+                conf = output[5]
+                cls = output[6]
+                sim = output[7]
 
                 # if save_txt:
                 #     # to MOT format
@@ -225,7 +228,7 @@ def run(args):
 
                 c = int(cls)  # integer class
                 id = int(id)  # integer id
-                label = (f'{id} {conf:.2f} {sims[j]:.2f}')
+                label = (f'{id} {conf:.2f} {sim:.2f}')
                 plot_one_box(bboxes, image, label=label, color=color, line_thickness=2)
 
         # # Sim score theo GDino
