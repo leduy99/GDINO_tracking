@@ -202,16 +202,17 @@ def run(args):
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         max_idx = detections.confidence.argmax()
 
-        # # Sim score theo ImageBind
-        # crops = []
-        # for det in detections.xyxy:
-        #     crop = image[int(det[1]) : int(det[3]) , int(det[0]) : int(det[2])]
-        #     crops.append(crop)
+        if args.feature_mode != "gdino":
+            # Sim score theo ImageBind
+            crops = []
+            for det in detections.xyxy:
+                crop = image[int(det[1]) : int(det[3]) , int(det[0]) : int(det[2])]
+                crops.append(crop)
 
-        # sims, embs = retriev_vision_and_vision(crops, max_idx)
-
-        # Sim score theo GDino
-        sims, embs = feature_sim_from_gdino(detections.xyxy, feature, max_idx)
+            sims, embs = retriev_vision_and_vision(crops, max_idx)
+        else:
+            # Sim score theo GDino
+            sims, embs = feature_sim_from_gdino(detections.xyxy, feature, max_idx)
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
@@ -278,6 +279,7 @@ def parse_opt():
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBind')
     parser.add_argument('--text-prompt', type=str, default='red object')
+    parser.add_argument('--feature-mode', type=str, default='gdino')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()
