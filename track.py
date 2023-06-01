@@ -137,7 +137,7 @@ def run(args):
         os.makedirs(dest_folder)
 
     # Create text path and clear content in text file
-    txt_path = os.path.join(dest_folder, folder_name + '.txt')
+    txt_path = os.path.join('/content/deepocsort', folder_name + '.txt')
     open(txt_path, 'w').close()
 
     # Init Tracker
@@ -253,7 +253,7 @@ def run(args):
                     bbox_h = output[3] - output[1]
                     # Write MOT compliant results to file
                     with open(txt_path, 'a') as f:
-                        f.write(('%g ' * 10 + '\n') % (frame_idx, id, bbox_left,  # MOT format
+                        f.write(('%g,' * 9 + '%g' + '\n') % (frame_idx, id, bbox_left,  # MOT format
                                                                bbox_top, bbox_w, bbox_h, conf, -1, -1, -1))
 
                 c = int(cls)  # integer class
