@@ -96,7 +96,23 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
 
     # vision_referring_result = torch.softmax(cropped_box_embeddings @ referring_image_embeddings.T, dim=0),
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
-    return vision_referring_result, cropped_box_embeddings  # [113, 1]
+    return vision_referring_result, cropped_box_embeddings
+
+def feature_sim_from_gdino(dets, feature, ref_pos):
+    rh,  rw = feature.tensors.shape[2] / 1080 , feature.tensors.shape[3] / 1920
+    det_feats = []
+    for det in dets:
+        xc = int((det[0] + det[2])/2 * rw)
+        yc = int((det[1] + det[3])/2 * rh)
+
+        det_feats.append(feature.tensors[:, :, yc, xc])
+
+    embs = torch.stack(det_feats, dim=0)
+    ref_emb = embs[ref_pos].unsqueeze(0)
+    ref_emb = ref_emb.expand(embs.size())
+
+    result = F.cosine_similarity(embs, ref_emb, dim=2)
+    return torch.squeeze(result), embs.squeeze()
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
@@ -165,7 +181,7 @@ def run(args):
         detections, phrases, feature = grounding_dino_model.predict_with_caption(
             image=image, 
             caption=args.text_prompt, 
-            box_threshold=0.18, 
+            box_threshold=0.2, 
             text_threshold=0.2
         )
 
@@ -186,13 +202,20 @@ def run(args):
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         max_idx = detections.confidence.argmax()
 
-        # Sim score theo ImageBind
-        crops = []
-        for det in detections.xyxy:
-            crop = image[int(det[1]) : int(det[3]) , int(det[0]) : int(det[2])]
-            crops.append(crop)
+        # # Sim score theo ImageBind
+        # crops = []
+        # for det in detections.xyxy:
+        #     crop = image[int(det[1]) : int(det[3]) , int(det[0]) : int(det[2])]
+        #     crops.append(crop)
 
-        sims, embs = retriev_vision_and_vision(crops, max_idx)
+        # sims, embs = retriev_vision_and_vision(crops, max_idx)
+
+        # Sim score theo GDino
+        sims, embs = feature_sim_from_gdino(detections.xyxy, feature, max_idx)
+
+        # Sim score theo GDino nhưng average
+        # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
+
 
         # Adaptive Threshold
         target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
@@ -231,18 +254,12 @@ def run(args):
                     # Write MOT compliant results to file
                     with open(txt_path, 'a') as f:
                         f.write(('%g ' * 10 + '\n') % (frame_idx, id, bbox_left,  # MOT format
-                                                               bbox_top, bbox_w, bbox_h, -1, -1, -1, -1))
+                                                               bbox_top, bbox_w, bbox_h, conf, -1, -1, -1))
 
                 c = int(cls)  # integer class
                 id = int(id)  # integer id
                 label = (f'{id} {conf:.2f} {sim:.2f}')
                 plot_one_box(bboxes, image, label=label, color=color, line_thickness=2)
-
-        # # Sim score theo GDino
-        # result = feature_sim_from_gdino(detections.xyxy, feature, max_idx)
-
-        # Sim score theo GDino nhưng average
-        # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
 
         # labels = []
         # for i, det in enumerate(detections.xyxy):
