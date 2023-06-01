@@ -137,7 +137,11 @@ def run(args):
         os.makedirs(dest_folder)
 
     # Create text path and clear content in text file
-    txt_path = os.path.join('/content/deepocsort', folder_name + '.txt')
+    parent_txt_path = os.path.join(args.save_dir, args.feature_mode)
+    if not os.path.exists(parent_txt_path):
+        os.makedirs(parent_txt_path)
+        
+    txt_path = os.path.join(parent_txt_path, folder_name + '.txt')
     open(txt_path, 'w').close()
 
     # Init Tracker
