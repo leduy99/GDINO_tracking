@@ -166,6 +166,13 @@ def run(args):
     box_annotator = sv.BoxAnnotator()
     color = [204, 0, 102]
 
+    # Construct text prompt
+    text_prompt = args.main_object
+    if args.attribute != '':
+        text_prompt = f'{args.attribute} {text_prompt}'
+    if args.partial_feature != '':
+        text_prompt = f'{text_prompt} has {args.partial_feature}'
+
     for img in sorted(os.listdir(args.source)):
     
         #Option for tracking on a snippet
@@ -184,13 +191,23 @@ def run(args):
         # detect objects
         detections, phrases, feature = grounding_dino_model.predict_with_caption(
             image=image, 
-            caption=args.text_prompt, 
+            caption=text_prompt, 
             box_threshold=0.2, 
             text_threshold=0.2
         )
 
         rm_list = []
         for box_id in range(len(detections.xyxy)):
+            #Check if detected box is the main object
+            if phrases[box_id] not in args.main_object:
+                rm_list.append(box_id)
+                continue
+        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+
+        rm_list = []
+        for box_id in range(len(detections.xyxy)):
+            # Remove overlapped boxes
             xo1, yo1, xo2, yo2 = detections.xyxy[box_id] 
             cnt = 0
             for box in detections.xyxy:
@@ -282,7 +299,9 @@ def parse_opt():
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBind')
-    parser.add_argument('--text-prompt', type=str, default='red object')
+    parser.add_argument('--main-object', type=str, default='')
+    parser.add_argument('--attribute', type=str, default='')
+    parser.add_argument('--partial-feature', type=str, default='')
     parser.add_argument('--feature-mode', type=str, default='gdino')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
