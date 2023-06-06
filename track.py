@@ -168,10 +168,8 @@ def run(args):
 
     # Construct text prompt
     text_prompt = args.main_object
-    if args.attribute != '':
-        text_prompt = f'{args.attribute} {text_prompt}'
-    if args.partial_feature != '':
-        text_prompt = f'{text_prompt} has {args.partial_feature}'
+    if args.sub_part != '':
+        text_prompt = f'{text_prompt} has {args.sub_part}'
 
     for img in sorted(os.listdir(args.source)):
     
@@ -300,8 +298,7 @@ def parse_opt():
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBind')
     parser.add_argument('--main-object', type=str, default='')
-    parser.add_argument('--attribute', type=str, default='')
-    parser.add_argument('--partial-feature', type=str, default='')
+    parser.add_argument('--sub-part', type=str, default='')
     parser.add_argument('--feature-mode', type=str, default='gdino')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)

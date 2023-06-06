@@ -14,6 +14,7 @@ matplotlib
 types-regex
 mayavi
 cartopy
+lap
 
 transformers
 addict
