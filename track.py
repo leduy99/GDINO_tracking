@@ -98,7 +98,7 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings
 
-def feature_sim_from_gdino(dets, feature, ref_pos):
+def feature_sim_from_gdino(dets, feature, ref_pos, target_mem, num_target=1):
     rh,  rw = feature.tensors.shape[2] / 1080 , feature.tensors.shape[3] / 1920
     det_feats = []
     for det in dets:
@@ -107,12 +107,22 @@ def feature_sim_from_gdino(dets, feature, ref_pos):
 
         det_feats.append(feature.tensors[:, :, yc, xc])
 
-    embs = torch.stack(det_feats, dim=0)
+    embs = torch.squeeze(torch.stack(det_feats, dim=0))
     ref_emb = embs[ref_pos].unsqueeze(0)
-    ref_emb = ref_emb.expand(embs.size())
 
-    result = F.cosine_similarity(embs, ref_emb, dim=2)
-    return torch.squeeze(result), embs.squeeze()
+    if target_mem == None:
+        target_mem = ref_emb
+    else:
+        if target_mem.size()[0] < num_target:
+            target_mem = torch.cat((target_mem, ref_emb), dim=0)
+        elif target_mem.size()[0] == num_target:
+            target_mem = torch.cat((target_mem[1:, :], ref_emb), dim=0)
+
+    t1_norm = F.normalize(embs, dim=1)
+    t2_norm = F.normalize(target_mem, dim=1)
+
+    result = torch.mean(torch.mm(t1_norm, t2_norm.t()), dim=1)
+    return result, embs, target_mem
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
@@ -162,6 +172,7 @@ def run(args):
     ori_image = None
     image = None
     frame_idx = 0
+    target_mem = None
 
     box_annotator = sv.BoxAnnotator()
     color = [204, 0, 102]
@@ -231,7 +242,7 @@ def run(args):
             sims, embs = retriev_vision_and_vision(crops, max_idx)
         else:
             # Sim score theo GDino
-            sims, embs = feature_sim_from_gdino(detections.xyxy, feature, max_idx)
+            sims, embs, target_mem = feature_sim_from_gdino(detections.xyxy, feature, max_idx, target_mem, args.num_target)
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
@@ -300,6 +311,7 @@ def parse_opt():
     parser.add_argument('--main-object', type=str, default='')
     parser.add_argument('--sub-part', type=str, default='')
     parser.add_argument('--feature-mode', type=str, default='gdino')
+    parser.add_argument('--num-target', type=int, default=0)
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()
