@@ -98,7 +98,7 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings
 
-def feature_sim_from_gdino(dets, feature, ref_pos, target_mem, num_target=1):
+def feature_sim_from_gdino(dets, feature, ref_pos, ref_conf, best_conf, best_emb, target_mem, num_target=1):
     rh,  rw = feature.tensors.shape[2] / 1080 , feature.tensors.shape[3] / 1920
     det_feats = []
     for det in dets:
@@ -125,17 +125,26 @@ def feature_sim_from_gdino(dets, feature, ref_pos, target_mem, num_target=1):
 
     if target_mem == None:
         target_mem = ref_emb
+        best_conf = ref_conf
+        best_emb = ref_emb
     else:
+        if ref_conf >= best_conf:
+            best_emb = ref_emb
+            best_conf = ref_conf
+
         if target_mem.size()[0] < num_target:
             target_mem = torch.cat((target_mem, ref_emb), dim=0)
+
         elif target_mem.size()[0] == num_target:
             target_mem = torch.cat((target_mem[1:, :], ref_emb), dim=0)
 
     t1_norm = F.normalize(embs, dim=1)
     t2_norm = F.normalize(target_mem, dim=1)
+    t3_norm = F.normalize(best_emb, dim=1)
 
     result = torch.mean(torch.mm(t1_norm, t2_norm.t()), dim=1)
-    return result, embs, target_mem
+    best_res = torch.mean(torch.mm(t1_norm, t3_norm.t()), dim=1)
+    return result, best_res, embs, best_conf, best_emb, target_mem
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
@@ -186,6 +195,8 @@ def run(args):
     image = None
     frame_idx = 0
     target_mem = None
+    best_emb = [None]
+    best_conf = 0
 
     box_annotator = sv.BoxAnnotator()
     color = [204, 0, 102]
@@ -255,7 +266,9 @@ def run(args):
             sims, embs = retriev_vision_and_vision(crops, max_idx)
         else:
             # Sim score theo GDino
-            sims, embs, target_mem = feature_sim_from_gdino(detections.xyxy, feature, max_idx, target_mem, args.num_target)
+            sims, best_sims, embs, best_conf, best_emb, target_mem = feature_sim_from_gdino(detections.xyxy, feature, max_idx,
+                                                                detections.confidence[max_idx], best_conf, best_emb,
+                                                                target_mem, args.num_target)
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
@@ -264,13 +277,15 @@ def run(args):
         # Adaptive Threshold
         target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
         num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
-        target_sim = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
+        target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
+        target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
 
         rm_list = []
         for idx, conf in enumerate(detections.confidence):
             if conf < target_conf:
-                if sims[idx] < target_sim:
-                    rm_list.append(idx)
+                if sims[idx] < target_sim_1:
+                    if best_sims[idx] < target_sim_2:
+                        rm_list.append(idx)
         
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
