@@ -7,7 +7,7 @@ import sys
 import os
 import cv2
 
-from torchvision import transforms
+from torchvision import transforms, ops
 import torch.nn.functional as F
 from PIL import Image
 
@@ -39,9 +39,9 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 grounding_dino_model = Model(model_config_path=GROUNDING_DINO_CONFIG_PATH, model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH)
 
-bind_model = imagebind_model.imagebind_huge(pretrained=True)
-bind_model.eval()
-bind_model.to(device)
+# bind_model = imagebind_model.imagebind_huge(pretrained=True)
+# bind_model.eval()
+# bind_model.to(device)
 
 # Define funcs
 def post_process_detect(dets, sims):
@@ -106,6 +106,19 @@ def feature_sim_from_gdino(dets, feature, ref_pos, target_mem, num_target=1):
         yc = int((det[1] + det[3])/2 * rh)
 
         det_feats.append(feature.tensors[:, :, yc, xc])
+
+        # # RoI Align
+        # x, y, xx, yy = det
+        # if xx - x == 0:
+        #     xx += 1
+        # if yy - y == 0:
+        #     yy += 1
+            
+        # roi = feature.tensors[:, :, int(y * rh):int(yy * rh),
+        #                             int(x * rw):int(xx * rw)]
+        # roi = torch.nn.functional.interpolate(roi, size=(1, 1), mode='bicubic', align_corners=True)
+        # roi.squeeze()
+        # det_feats.append(roi)
 
     embs = torch.squeeze(torch.stack(det_feats, dim=0))
     ref_emb = embs[ref_pos].unsqueeze(0)
