@@ -23,6 +23,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
+from utils import FilterTools
 
 import boxmot.ImageBind.data as data
 import torch
@@ -98,54 +99,6 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings
 
-def feature_sim_from_gdino(dets, feature, ref_pos, ref_conf, best_conf, best_emb, target_mem, num_target=1):
-    rh,  rw = feature.tensors.shape[2] / 1080 , feature.tensors.shape[3] / 1920
-    det_feats = []
-    for det in dets:
-        xc = int((det[0] + det[2])/2 * rw)
-        yc = int((det[1] + det[3])/2 * rh)
-
-        det_feats.append(feature.tensors[:, :, yc, xc])
-
-        # # RoI Align
-        # x, y, xx, yy = det
-        # if xx - x == 0:
-        #     xx += 1
-        # if yy - y == 0:
-        #     yy += 1
-            
-        # roi = feature.tensors[:, :, int(y * rh):int(yy * rh),
-        #                             int(x * rw):int(xx * rw)]
-        # roi = torch.nn.functional.interpolate(roi, size=(1, 1), mode='bicubic', align_corners=True)
-        # roi.squeeze()
-        # det_feats.append(roi)
-
-    embs = torch.squeeze(torch.stack(det_feats, dim=0))
-    ref_emb = embs[ref_pos].unsqueeze(0)
-
-    if target_mem == None:
-        target_mem = ref_emb
-        best_conf = ref_conf
-        best_emb = ref_emb
-    else:
-        if ref_conf >= best_conf:
-            best_emb = ref_emb
-            best_conf = ref_conf
-
-        if target_mem.size()[0] < num_target:
-            target_mem = torch.cat((target_mem, ref_emb), dim=0)
-
-        elif target_mem.size()[0] == num_target:
-            target_mem = torch.cat((target_mem[1:, :], ref_emb), dim=0)
-
-    t1_norm = F.normalize(embs, dim=1)
-    t2_norm = F.normalize(target_mem, dim=1)
-    t3_norm = F.normalize(best_emb, dim=1)
-
-    result = torch.mean(torch.mm(t1_norm, t2_norm.t()), dim=1)
-    best_res = torch.mean(torch.mm(t1_norm, t3_norm.t()), dim=1)
-    return result, best_res, embs, best_conf, best_emb, target_mem
-
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
@@ -191,12 +144,10 @@ def run(args):
       )
 
     detections = None
-    ori_image = None
     image = None
     frame_idx = 0
-    target_mem = None
-    best_emb = [None]
-    best_conf = 0
+
+    tools = FilterTools(args.num_target, args.two_filters)
 
     box_annotator = sv.BoxAnnotator()
     color = [204, 0, 102]
@@ -266,9 +217,8 @@ def run(args):
             sims, embs = retriev_vision_and_vision(crops, max_idx)
         else:
             # Sim score theo GDino
-            sims, best_sims, embs, best_conf, best_emb, target_mem = feature_sim_from_gdino(detections.xyxy, feature, max_idx,
-                                                                detections.confidence[max_idx], best_conf, best_emb,
-                                                                target_mem, args.num_target)
+            sims, best_sims, embs = tools.feature_sim_from_gdino(detections.xyxy, feature, max_idx,
+                                                                  detections.confidence[max_idx])
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
@@ -278,15 +228,23 @@ def run(args):
         target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
         num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
         target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
-        target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
 
+        # Two-level filter
         rm_list = []
         for idx, conf in enumerate(detections.confidence):
             if conf < target_conf:
+                # Level 2 is optional, sometimes it is better with only one level
                 if sims[idx] < target_sim_1:
-                    if best_sims[idx] < target_sim_2:
+                  
+                    if args.two_filters:
+                        target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
+                        if best_sims[idx] < target_sim_2:
+                            rm_list.append(idx)
+
+                    else:
                         rm_list.append(idx)
         
+        # Delete filtered objects
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         embs = delete_by_index(embs, rm_list)
@@ -340,6 +298,7 @@ def parse_opt():
     parser.add_argument('--sub-part', type=str, default='')
     parser.add_argument('--feature-mode', type=str, default='gdino')
     parser.add_argument('--num-target', type=int, default=0)
+    parser.add_argument('--two-filters', action='store_true', help='re-filter with best embedding')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()
