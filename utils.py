@@ -33,7 +33,7 @@ class FilterTools():
             # roi.squeeze()
             # det_feats.append(roi)
 
-        embs = torch.squeeze(torch.stack(det_feats, dim=0))
+        embs = torch.squeeze(torch.stack(det_feats, dim=0), 1)
         ref_emb = embs[ref_pos].unsqueeze(0)
 
         if self.target_mem == None:

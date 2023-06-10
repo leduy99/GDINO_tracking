@@ -161,6 +161,7 @@ def run(args):
     
         #Option for tracking on a snippet
         if frame_idx < args.start_frame:
+            frame_idx += 1
             continue
 
         if (frame_idx > args.end_frame) and (args.end_frame != 0):

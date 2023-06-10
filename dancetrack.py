@@ -164,6 +164,7 @@ def run(args):
         
             #Option for tracking on a snippet
             if frame_idx < args.start_frame:
+                frame_idx += 1
                 continue
 
             if (frame_idx > args.end_frame) and (args.end_frame != 0):
@@ -273,7 +274,7 @@ def run(args):
                         bbox_h = output[3] - output[1]
                         # Write MOT compliant results to file
                         with open(txt_path, 'a') as f:
-                            f.write(('%g,' * 9 + '%g' + '\n') % (frame_idx, id, bbox_left,  # MOT format
+                            f.write(('%g,' * 9 + '%g' + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
                                                                    bbox_top, bbox_w, bbox_h, conf, -1, -1, -1))
 
                     c = int(cls)  # integer class
