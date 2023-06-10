@@ -333,7 +333,7 @@ class GroundingDINO(nn.Module):
             ]
         )
         out = {"pred_logits": outputs_class[-1], "pred_boxes": outputs_coord_list[-1],
-               "pred_feature": features[-3]}
+               "pred_feature": features[-2]}
 
         # # for intermediate outputs
         # if self.aux_loss:
