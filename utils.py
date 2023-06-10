@@ -43,7 +43,7 @@ class FilterTools():
                 self.best_conf = ref_conf
                 self.best_emb = ref_emb
         else:
-            if ref_conf >= self.best_conf and self.two_filters:
+            if self.two_filters and ref_conf >= self.best_conf:
                 self.best_emb = ref_emb
                 self.best_conf = ref_conf
 
