@@ -2,6 +2,8 @@ from torchvision import transforms, ops
 import torch.nn.functional as F
 import torch
 
+import numpy as np
+
 class FilterTools():
     def __init__(self, num_target, two_filters):
         self.num_target = num_target
@@ -18,7 +20,7 @@ class FilterTools():
             xc = int((det[0] + det[2])/2 * rw)
             yc = int((det[1] + det[3])/2 * rh)
 
-            det_feats.append(feature.tensors[:, :, yc, xc])
+            det_feats.append(feature.tensors[:, :, yc-1:yc+1, xc-1:xc+1].mean(dim=(-2, -1)))
 
             # # RoI Align
             # x, y, xx, yy = det
@@ -64,3 +66,58 @@ class FilterTools():
             best_res = None
 
         return result, best_res, embs
+
+def nms(bounding_boxes, confidence_score, threshold=0.6):
+    # If no bounding boxes, return empty list
+    if len(bounding_boxes) == 0:
+        return [], []
+
+    # Bounding boxes
+    boxes = bounding_boxes
+
+    # coordinates of bounding boxes
+    start_x = boxes[:, 0]
+    start_y = boxes[:, 1]
+    end_x = boxes[:, 2]
+    end_y = boxes[:, 3]
+
+    # Confidence scores of bounding boxes
+    score = np.array(confidence_score)
+
+    # Picked bounding boxes
+    picked_boxes = []
+    picked_score = []
+
+    # Compute areas of bounding boxes
+    areas = (end_x - start_x + 1) * (end_y - start_y + 1)
+
+    # Sort by confidence score of bounding boxes
+    order = np.argsort(score)
+
+    # Iterate bounding boxes
+    while order.size > 0:
+        # The index of largest confidence score
+        index = order[-1]
+
+        # Pick the bounding box with largest confidence score
+        picked_boxes.append(bounding_boxes[index])
+        picked_score.append(confidence_score[index])
+
+        # Compute ordinates of intersection-over-union(IOU)
+        x1 = np.maximum(start_x[index], start_x[order[:-1]])
+        x2 = np.minimum(end_x[index], end_x[order[:-1]])
+        y1 = np.maximum(start_y[index], start_y[order[:-1]])
+        y2 = np.minimum(end_y[index], end_y[order[:-1]])
+
+        # Compute areas of intersection-over-union
+        w = np.maximum(0.0, x2 - x1 + 1)
+        h = np.maximum(0.0, y2 - y1 + 1)
+        intersection = w * h
+
+        # Compute the ratio between intersection and union
+        ratio = intersection / (areas[index] + areas[order[:-1]] - intersection)
+
+        left = np.where(ratio < threshold)
+        order = order[left]
+
+    return np.array(picked_boxes), np.array(picked_score)
