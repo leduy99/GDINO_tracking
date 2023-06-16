@@ -20,7 +20,7 @@ class FilterTools():
             xc = int((det[0] + det[2])/2 * rw)
             yc = int((det[1] + det[3])/2 * rh)
 
-            det_feats.append(feature.tensors[:, :, yc-1:yc+1, xc-1:xc+1].mean(dim=(-2, -1)))
+            det_feats.append(feature.tensors[:, :, yc, xc])
 
             # # RoI Align
             # x, y, xx, yy = det
@@ -42,12 +42,18 @@ class FilterTools():
             self.target_mem = ref_emb
 
             if self.two_filters:
-                self.best_conf = ref_conf
+                self.best_conf = np.array([ref_conf])
                 self.best_emb = ref_emb
         else:
-            if self.two_filters and ref_conf >= self.best_conf:
-                self.best_emb = ref_emb
-                self.best_conf = ref_conf
+            if self.two_filters:
+                if self.best_emb.size()[0] < 10:
+                    np.append(self.best_conf , ref_conf)
+                    self.best_emb = torch.cat((self.best_emb, ref_emb), dim=0)
+                else:
+                    if self.best_conf.min() < ref_conf:
+                        min_idx = self.best_conf.argmin()
+                        self.best_conf[min_idx] = ref_conf
+                        self.best_emb[min_idx] = ref_emb
 
             if self.target_mem.size()[0] < self.num_target:
                 self.target_mem = torch.cat((self.target_mem, ref_emb), dim=0)
@@ -58,7 +64,7 @@ class FilterTools():
         t1_norm = F.normalize(embs, dim=1)
         t2_norm = F.normalize(self.target_mem, dim=1)
         result = torch.mean(torch.mm(t1_norm, t2_norm.t()), dim=1)
-        
+
         if self.two_filters:
             t3_norm = F.normalize(self.best_emb, dim=1)
             best_res = torch.mean(torch.mm(t1_norm, t3_norm.t()), dim=1)

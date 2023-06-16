@@ -23,7 +23,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
-from utils import FilterTools
+from utils import FilterTools, nms
 
 import boxmot.ImageBind.data as data
 import torch
@@ -206,6 +206,7 @@ def run(args):
 
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+        detections.xyxy, detections.confidence = nms(detections.xyxy, detections.confidence, 0.45)
         max_idx = detections.confidence.argmax()
 
         if args.feature_mode != "gdino":
