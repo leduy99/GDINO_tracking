@@ -19,7 +19,6 @@ class FilterTools():
         for det in dets:
             xc = int((det[0] + det[2])/2 * rw)
             yc = int((det[1] + det[3])/2 * rh)
-
             det_feats.append(feature.tensors[:, :, yc, xc])
 
             # # RoI Align
@@ -46,11 +45,11 @@ class FilterTools():
                 self.best_emb = ref_emb
         else:
             if self.two_filters:
-                if self.best_emb.size()[0] < 10:
+                if (self.best_emb.size()[0] < 9) and (self.best_conf.min() <= ref_conf):
                     np.append(self.best_conf , ref_conf)
                     self.best_emb = torch.cat((self.best_emb, ref_emb), dim=0)
                 else:
-                    if self.best_conf.min() < ref_conf:
+                    if self.best_conf.min() <= ref_conf:
                         min_idx = self.best_conf.argmin()
                         self.best_conf[min_idx] = ref_conf
                         self.best_emb[min_idx] = ref_emb
