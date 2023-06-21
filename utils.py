@@ -16,10 +16,42 @@ class FilterTools():
     def feature_sim_from_gdino(self, dets, feature, ref_pos, ref_conf):
         rh,  rw = feature.tensors.shape[2] / 1080 , feature.tensors.shape[3] / 1920
         det_feats = []
-        for det in dets:
+        cropped_feats = []
+        for i, det in enumerate(dets):
             xc = int((det[0] + det[2])/2 * rw)
             yc = int((det[1] + det[3])/2 * rh)
             det_feats.append(feature.tensors[:, :, yc, xc])
+
+            if i == ref_pos:
+                x, y, xx, yy = det
+                if xx - x == 0:
+                    xx += 1
+                if yy - y == 0:
+                    yy += 1
+    
+                roi = feature.tensors[:, :, int(y * rh):int(yy * rh),
+                                            int((x + (xx-x)/8) * rw):int(xx * rw)]
+                roi = torch.nn.functional.interpolate(roi, size=(1, 1), mode='bilinear', align_corners=True)
+                roi.squeeze()
+                cropped_feats.append(roi)
+
+                roi = feature.tensors[:, :, int(y * rh):int(yy * rh),
+                                            int(x * rw):int((xx - (xx-x)/8) * rw)]
+                roi = torch.nn.functional.interpolate(roi, size=(1, 1), mode='bilinear', align_corners=True)
+                roi.squeeze()
+                cropped_feats.append(roi)
+
+                roi = feature.tensors[:, :, int((y + (yy-y)/8)* rh):int(yy * rh),
+                                            int(x * rw):int(xx * rw)]
+                roi = torch.nn.functional.interpolate(roi, size=(1, 1), mode='bilinear', align_corners=True)
+                roi.squeeze()
+                cropped_feats.append(roi)
+
+                roi = feature.tensors[:, :, int(y * rh):int((yy - (yy-y)/8)* rh),
+                                            int(x * rw):int(xx * rw)]
+                roi = torch.nn.functional.interpolate(roi, size=(1, 1), mode='bilinear', align_corners=True)
+                roi.squeeze()
+                cropped_feats.append(roi)
 
             # # RoI Align
             # x, y, xx, yy = det
@@ -34,6 +66,7 @@ class FilterTools():
             # roi.squeeze()
             # det_feats.append(roi)
 
+        cropped_embs = torch.squeeze(torch.stack(cropped_feats, dim=0))
         embs = torch.squeeze(torch.stack(det_feats, dim=0), 1)
         ref_emb = embs[ref_pos].unsqueeze(0)
 
@@ -43,6 +76,7 @@ class FilterTools():
             if self.two_filters:
                 self.best_conf = np.array([ref_conf])
                 self.best_emb = ref_emb
+                self.cropped_embs = cropped_embs
         else:
             if self.two_filters:
                 if (self.best_emb.size()[0] < 9) and (self.best_conf.min() <= ref_conf):
@@ -53,6 +87,9 @@ class FilterTools():
                         min_idx = self.best_conf.argmin()
                         self.best_conf[min_idx] = ref_conf
                         self.best_emb[min_idx] = ref_emb
+                
+                if self.best_conf.max() <= ref_conf:
+                    self.cropped_embs = cropped_embs
 
             if self.target_mem.size()[0] < self.num_target:
                 self.target_mem = torch.cat((self.target_mem, ref_emb), dim=0)
@@ -67,10 +104,14 @@ class FilterTools():
         if self.two_filters:
             t3_norm = F.normalize(self.best_emb, dim=1)
             best_res = torch.mean(torch.mm(t1_norm, t3_norm.t()), dim=1)
+
+            t4_norm = F.normalize(self.cropped_embs, dim=1)
+            cropped_res = torch.mean(torch.mm(t1_norm, t4_norm.t()), dim=1)
         else:
             best_res = None
+            cropped_res = None
 
-        return result, best_res, embs
+        return result, best_res, cropped_res, embs
 
 def nms(bounding_boxes, confidence_score, threshold=0.6):
     # If no bounding boxes, return empty list

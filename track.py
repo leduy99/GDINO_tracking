@@ -219,7 +219,7 @@ def run(args):
             sims, embs = retriev_vision_and_vision(crops, max_idx)
         else:
             # Sim score theo GDino
-            sims, best_sims, embs = tools.feature_sim_from_gdino(detections.xyxy, feature, max_idx,
+            sims, best_sims, cropped_sims, embs = tools.feature_sim_from_gdino(detections.xyxy, feature, max_idx,
                                                                   detections.confidence[max_idx])
 
         # Sim score theo GDino nhưng average
@@ -241,7 +241,9 @@ def run(args):
                     if args.two_filters:
                         target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
                         if best_sims[idx] < target_sim_2:
-                            rm_list.append(idx)
+                            target_sim_3 = torch.mean(torch.sort(cropped_sims.detach().clone(), descending=True)[0][1:num_k])
+                            if cropped_sims[idx] < target_sim_3:
+                                rm_list.append(idx)
 
                     else:
                         rm_list.append(idx)
