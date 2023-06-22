@@ -23,7 +23,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
-from utils import FilterTools, nms
+from utils import FilterTools, nms, cal_iou
 
 import boxmot.ImageBind.data as data
 import torch
@@ -156,6 +156,8 @@ def run(args):
     text_prompt = args.main_object
     if args.sub_part != '':
         text_prompt = f'{text_prompt} has {args.sub_part}'
+    if args.negative_part != '':
+        text_prompt = f'{text_prompt}. {args.negative_part}'
 
     for img in sorted(os.listdir(args.source)):
     
@@ -184,26 +186,33 @@ def run(args):
         rm_list = []
         for box_id in range(len(detections.xyxy)):
             #Check if detected box is the main object
-            if phrases[box_id] not in args.main_object:
+            if phrases[box_id] in args.sub_part:
                 rm_list.append(box_id)
                 continue
+        phrases = np.delete(phrases, rm_list, axis=0)
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
 
         rm_list = []
         for box_id in range(len(detections.xyxy)):
+            if args.negative_part != '' and args.negative_part in phrases[box_id]:
+                rm_list.append(box_id)
+                continue
+
             # Remove overlapped boxes
-            xo1, yo1, xo2, yo2 = detections.xyxy[box_id] 
             cnt = 0
-            for box in detections.xyxy:
-                xi1, yi1, xi2, yi2 = box
-                if cnt > 1:
-                    break
-                if xi1 >= xo1 and yi1 >= yo1 and xi2 <= xo2 and yi2 <= yo2:
-                    cnt += 1
+            for id, box in enumerate(detections.xyxy):
+                if cal_iou(detections.xyxy[box_id], box) >= 0.8:
+                    if args.negative_part != '' and args.negative_part in phrases[id]:
+                        cnt = 2
+                    else:
+                        cnt += 1
+                    if cnt > 1:
+                        break
             if cnt > 1:
                 rm_list.append(box_id)
 
+        phrases = np.delete(phrases, rm_list, axis=0)
         detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
         detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
         detections.xyxy, detections.confidence = nms(detections.xyxy, detections.confidence, 0.45)
@@ -241,9 +250,14 @@ def run(args):
                     if args.two_filters:
                         target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
                         if best_sims[idx] < target_sim_2:
-                            target_sim_3 = torch.mean(torch.sort(cropped_sims.detach().clone(), descending=True)[0][1:num_k])
-                            if cropped_sims[idx] < target_sim_3:
-                                rm_list.append(idx)
+
+                            if args.cropped_filters:
+                                target_sim_3 = torch.mean(torch.sort(cropped_sims.detach()
+                                                    .clone(), descending=True)[0][1:num_k])
+                                if cropped_sims[idx] < target_sim_3:
+                                    rm_list.append(idx)
+                            else:
+                                  rm_list.append(idx)
 
                     else:
                         rm_list.append(idx)
@@ -300,9 +314,11 @@ def parse_opt():
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBind')
     parser.add_argument('--main-object', type=str, default='')
     parser.add_argument('--sub-part', type=str, default='')
+    parser.add_argument('--negative-part', type=str, default='')
     parser.add_argument('--feature-mode', type=str, default='gdino')
     parser.add_argument('--num-target', type=int, default=0)
     parser.add_argument('--two-filters', action='store_true', help='re-filter with best embedding')
+    parser.add_argument('--cropped-filters', action='store_true', help='re-filter for occluded objects')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()

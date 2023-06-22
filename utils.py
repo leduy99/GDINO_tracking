@@ -167,3 +167,22 @@ def nms(bounding_boxes, confidence_score, threshold=0.6):
         order = order[left]
 
     return np.array(picked_boxes), np.array(picked_score)
+
+def cal_iou(bbox1, bbox2):
+    # Tính toán tọa độ của vùng giao nhau (intersection)
+    x1 = max(bbox1[0], bbox2[0])
+    y1 = max(bbox1[1], bbox2[1])
+    x2 = min(bbox1[2], bbox2[2])
+    y2 = min(bbox1[3], bbox2[3])
+
+    # Tính toán diện tích của vùng giao nhau
+    intersection_area = max(0, x2 - x1 + 1) * max(0, y2 - y1 + 1)
+
+    # Tính toán diện tích tổng của hai bbox
+    bbox1_area = (bbox1[2] - bbox1[0] + 1) * (bbox1[3] - bbox1[1] + 1)
+    bbox2_area = (bbox2[2] - bbox2[0] + 1) * (bbox2[3] - bbox2[1] + 1)
+
+    # Tính toán IoU
+    iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
+
+    return iou
