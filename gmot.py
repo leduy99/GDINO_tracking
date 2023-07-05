@@ -165,14 +165,14 @@ def run(args):
         if len(prompts) > 1:
             for i in range(1, len(prompts)):
                 prompt_type = prompts[i].split(' -- ')[0]
-                if prompt_type = 'sub':
+                if prompt_type == 'sub':
                    sub_parts = prompts[i].split(' -- ')[1]
                 else:
                     negative_parts = prompts[i].split(' -- ')[1]
 
         print(f'start tracking {folder_name}')
         
-        src_folder = os.path.join(args.source, folder_name, 'img1')
+        src_folder = os.path.join('/content/GenericMOT_JPEG_Sequence', folder_name, 'img1')
         dest_folder = os.path.join(args.save_dir, 'img', folder_name)
         if not os.path.exists(dest_folder):
             os.makedirs(dest_folder)
@@ -203,7 +203,7 @@ def run(args):
         image = None
         frame_idx = 0
 
-        tools = FilterTools(args.num_target, args.two_filters)
+        tools = FilterTools(args.num_target, args.long_mems)
 
         box_annotator = sv.BoxAnnotator()
         color = [204, 0, 102]
@@ -226,7 +226,7 @@ def run(args):
                 break
 
             # load image
-            img_dir = os.path.join(args.source, img)
+            img_dir = os.path.join(src_folder, img)
             print('processing:', img_dir)
 
             image = cv2.imread(img_dir)
@@ -239,7 +239,7 @@ def run(args):
                 text_threshold=0.2
             )
 
-            detections, phrases = process_bboxes(detections, phrases)
+            detections, phrases = process_bboxes(detections, phrases, sub_parts, negative_parts)
             max_idx = detections.confidence.argmax()
 
             if args.feature_mode != "gdino":
@@ -296,7 +296,7 @@ def run(args):
                 max_idx = detections.confidence.argmax()
 
             #Feed data into tracker
-            outputs = tracker.update(detections, sims, embs.cpu(), image)
+            outputs = tracker.update(detections, sims.cpu().detach().numpy(), embs.cpu(), image)
 
             if len(outputs) > 0:
                 for j, output in enumerate(outputs):
@@ -338,8 +338,7 @@ def parse_opt():
     parser.add_argument('--tracking-method', type=str, default='deepocsort', help='deepocsort, botsort, strongsort, ocsort, bytetrack')
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
-    parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBind')
-    parser.add_argument('--main-object', type=str, default='')
+    parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBase')
     parser.add_argument('--feature-mode', type=str, default='gdino')
     parser.add_argument('--num-target', type=int, default=0)
     parser.add_argument('--short-mems', action='store_true', help='re-filter with best embedding')
