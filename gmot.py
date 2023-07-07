@@ -165,7 +165,7 @@ def run(args):
         if len(prompts) > 1:
             for i in range(1, len(prompts)):
                 prompt_type = prompts[i].split(' -- ')[0]
-                if prompt_type == 'sub':
+                if prompt_type == 'sub_parts':
                    sub_parts = prompts[i].split(' -- ')[1]
                 else:
                     negative_parts = prompts[i].split(' -- ')[1]
