@@ -186,3 +186,23 @@ def cal_iou(bbox1, bbox2):
     iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
 
     return iou
+
+def contains_bbox(bbox1, bbox2):
+  """
+  Returns True if bbox2 is contained inside bbox1, False otherwise.
+
+  Args:
+    bbox1: The larger bounding box.
+    bbox2: The smaller bounding box.
+
+  Returns:
+    True if bbox2 is contained inside bbox1, False otherwise.
+  """
+
+  top_left_1 = (bbox1[0], bbox1[1])
+  bottom_right_1 = (bbox1[2], bbox1[3])
+  top_left_2 = (bbox2[0], bbox2[1])
+  bottom_right_2 = (bbox2[2], bbox2[3])
+
+  return top_left_2[0] >= top_left_1[0] and top_left_2[1] >= top_left_1[1] \
+    and bottom_right_2[0] <= bottom_right_1[0] and bottom_right_2[1] <= bottom_right_1[1]

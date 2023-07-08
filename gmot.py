@@ -23,7 +23,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
-from utils import FilterTools, nms, cal_iou
+from utils import FilterTools, nms, contains_bbox
 
 import boxmot.ImageBind.data as data
 import torch
@@ -119,7 +119,7 @@ def process_bboxes(detections, phrases, sub_parts, negative_parts):
         # Remove overlapped boxes
         cnt = 0
         for id, box in enumerate(detections.xyxy):
-            if cal_iou(detections.xyxy[box_id], box) >= 0.8:
+            if box_id != id and contains_bbox(detections.xyxy[box_id], box):
                 if negative_parts != '' and negative_parts in phrases[id]:
                     cnt = 2
                 else:
@@ -238,7 +238,6 @@ def run(args):
                 box_threshold=0.2, 
                 text_threshold=0.2
             )
-
             detections, phrases = process_bboxes(detections, phrases, sub_parts, negative_parts)
             max_idx = detections.confidence.argmax()
 
@@ -292,11 +291,12 @@ def run(args):
                 detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
                 detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
                 embs = delete_by_index(embs, rm_list)
-                sims = delete_by_index(sims, rm_list).cpu().detach().numpy()
+                sims = delete_by_index(sims, rm_list)
                 max_idx = detections.confidence.argmax()
 
             #Feed data into tracker
-            outputs = tracker.update(detections, sims.cpu().detach().numpy(), embs.cpu(), image)
+            sims = sims.cpu().detach().numpy()
+            outputs = tracker.update(detections, sims, embs.cpu(), image)
 
             if len(outputs) > 0:
                 for j, output in enumerate(outputs):
