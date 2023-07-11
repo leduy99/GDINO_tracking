@@ -223,6 +223,9 @@ def run(args):
         detections, phrases = process_bboxes(detections, phrases, args.sub_part, args.negative_part)
         max_idx = detections.confidence.argmax()
 
+        print('mean confidence là:', np.mean(detections.confidence))
+        print('std confidence là:', np.std(detections.confidence))
+
         if args.feature_mode != "gdino":
             # Sim score theo ImageBind
             crops = []
@@ -244,9 +247,10 @@ def run(args):
         for idx, emb in enumerate(embs):
             if idx == max_idx:
               continue
-            sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1)
-            measures.append(sim.cpu())
-            print(sim)
+            sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
+            measures.append(sim)
+            print(sim, detections.confidence[idx])
+        print('mean là:', np.mean(measures))
         print('std là:', np.std(measures))
 
 
