@@ -23,7 +23,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
-from utils import FilterTools, nms, cal_iou
+from utils import FilterTools, nms, contains_bbox
 
 import boxmot.ImageBind.data as data
 import torch
@@ -98,6 +98,43 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     # vision_referring_result = torch.softmax(cropped_box_embeddings @ referring_image_embeddings.T, dim=0),
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings
+
+def process_bboxes(detections, phrases, sub_parts, negative_parts):
+    rm_list = []
+    for box_id in range(len(detections.xyxy)):
+        #Check if detected box is the main object
+        if phrases[box_id] in sub_parts:
+            rm_list.append(box_id)
+            continue
+    phrases = np.delete(phrases, rm_list, axis=0)
+    detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+    detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+
+    rm_list = []
+    for box_id in range(len(detections.xyxy)):
+        if negative_parts != '' and negative_parts in phrases[box_id]:
+            rm_list.append(box_id)
+            continue
+
+        # Remove overlapped boxes
+        cnt = 0
+        for id, box in enumerate(detections.xyxy):
+            if box_id != id and contains_bbox(detections.xyxy[box_id], box):
+                if negative_parts != '' and negative_parts in phrases[id]:
+                    cnt = 2
+                else:
+                    cnt += 1
+                if cnt > 1:
+                    break
+        if cnt > 1:
+            rm_list.append(box_id)
+
+    phrases = np.delete(phrases, rm_list, axis=0)
+    detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+    detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+    detections.xyxy, detections.confidence = nms(detections.xyxy, detections.confidence, 0.45)
+
+    return detections, phrases
 
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
@@ -183,39 +220,7 @@ def run(args):
             text_threshold=0.2
         )
 
-        rm_list = []
-        for box_id in range(len(detections.xyxy)):
-            #Check if detected box is the main object
-            if phrases[box_id] in args.sub_part:
-                rm_list.append(box_id)
-                continue
-        phrases = np.delete(phrases, rm_list, axis=0)
-        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
-
-        rm_list = []
-        for box_id in range(len(detections.xyxy)):
-            if args.negative_part != '' and args.negative_part in phrases[box_id]:
-                rm_list.append(box_id)
-                continue
-
-            # Remove overlapped boxes
-            cnt = 0
-            for id, box in enumerate(detections.xyxy):
-                if cal_iou(detections.xyxy[box_id], box) >= 0.8:
-                    if args.negative_part != '' and args.negative_part in phrases[id]:
-                        cnt = 2
-                    else:
-                        cnt += 1
-                    if cnt > 1:
-                        break
-            if cnt > 1:
-                rm_list.append(box_id)
-
-        phrases = np.delete(phrases, rm_list, axis=0)
-        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
-        detections.xyxy, detections.confidence = nms(detections.xyxy, detections.confidence, 0.45)
+        detections, phrases = process_bboxes(detections, phrases, args.sub_part, args.negative_part)
         max_idx = detections.confidence.argmax()
 
         if args.feature_mode != "gdino":
@@ -233,6 +238,16 @@ def run(args):
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
+        mean_vector = torch.mean(embs, dim=0)
+        measures = []
+        print(f'sim của frame {frame_idx}')
+        for idx, emb in enumerate(embs):
+            if idx == max_idx:
+              continue
+            sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1)
+            measures.append(sim.cpu())
+            print(sim)
+        print('std là:', np.std(measures))
 
 
         # Adaptive Threshold
