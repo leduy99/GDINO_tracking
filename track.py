@@ -223,9 +223,6 @@ def run(args):
         detections, phrases = process_bboxes(detections, phrases, args.sub_part, args.negative_part)
         max_idx = detections.confidence.argmax()
 
-        print('mean confidence là:', np.mean(detections.confidence))
-        print('std confidence là:', np.std(detections.confidence))
-
         if args.feature_mode != "gdino":
             # Sim score theo ImageBind
             crops = []
@@ -241,23 +238,24 @@ def run(args):
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
-        mean_vector = torch.mean(embs, dim=0)
-        measures = []
-        print(f'sim của frame {frame_idx}')
-        for idx, emb in enumerate(embs):
-            if idx == max_idx:
-              continue
-            sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
-            measures.append(sim)
-            print(sim, detections.confidence[idx])
-        print('mean là:', np.mean(measures))
-        print('std là:', np.std(measures))
+        # mean_vector = torch.mean(embs, dim=0)
+        # measures = []
+        # print(f'sim của frame {frame_idx}')
+        # for idx, emb in enumerate(embs):
+        #     if idx == max_idx:
+        #       continue
+        #     sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
+        #     measures.append(sim)
+        #     print(sim, detections.confidence[idx])
+        # print('mean là:', np.mean(measures))
+        # print('std là:', np.std(measures))
 
 
         # Adaptive Threshold
-        target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
-        num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
-        target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
+        target_conf = np.mean(detections.confidence) - 1.29*np.std(detections.confidence)
+        # num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
+        candidates = np.where((detections.confidence >= target_conf) & (detections.confidence != detections.confidence[max_idx]))
+        target_sim_1 = torch.mean(sims[candidates])
 
         # Two-level filter
         rm_list = []
@@ -267,12 +265,11 @@ def run(args):
                 if sims[idx] < target_sim_1:
                   
                     if args.two_filters:
-                        target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
+                        target_sim_2 = torch.mean(best_sims[candidates])
                         if best_sims[idx] < target_sim_2:
 
                             if args.cropped_filters:
-                                target_sim_3 = torch.mean(torch.sort(cropped_sims.detach()
-                                                    .clone(), descending=True)[0][1:num_k])
+                                target_sim_3 = torch.mean(cropped_sims[candidates])
                                 if cropped_sims[idx] < target_sim_3:
                                     rm_list.append(idx)
                             else:

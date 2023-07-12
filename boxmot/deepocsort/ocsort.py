@@ -237,7 +237,7 @@ class KalmanBoxTracker(object):
             self.frozen = True
 
     def update_emb(self, emb, alpha=0.9):
-        print('sim trc và sau:', torch.nn.functional.cosine_similarity(self.emb, emb, dim=-1))
+        # print('sim trc và sau:', torch.nn.functional.cosine_similarity(self.emb, emb, dim=-1))
         self.emb = alpha * self.emb + (1 - alpha) * emb
         self.emb /= np.linalg.norm(self.emb)
 

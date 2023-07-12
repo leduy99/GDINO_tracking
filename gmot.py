@@ -260,7 +260,7 @@ def run(args):
 
             # Adaptive Threshold
             if args.short_mems:
-                target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
+                target_conf = np.mean(detections.confidence) - 1.29*np.std(detections.confidence)
                 num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
                 target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
 
