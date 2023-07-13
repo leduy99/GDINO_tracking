@@ -445,6 +445,7 @@ class OCSort(object):
             self.w_association_emb,
             self.aw_off,
             self.aw_param,
+            np.mean(sims)
         )
         for m in matched:
             self.trackers[m[1]].update(dets[m[0], :5], dets[m[0], 5])

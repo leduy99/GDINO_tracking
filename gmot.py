@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 from numpy import random
+from numpy.linalg import norm
 from pathlib import Path
 
 import sys
@@ -295,8 +296,14 @@ def run(args):
                 max_idx = detections.confidence.argmax()
 
             #Feed data into tracker
-            sims = sims.cpu().detach().numpy()
-            outputs = tracker.update(detections, sims, embs.cpu(), image)
+            # sims = sims.cpu().detach().numpy()
+            mean_vector = torch.mean(embs, dim=0)
+            measures = []
+            for idx, emb in enumerate(embs):
+                sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
+                measures.append(sim)
+              
+            outputs = tracker.update(detections, measures, embs.cpu(), image)
 
             if len(outputs) > 0:
                 for j, output in enumerate(outputs):

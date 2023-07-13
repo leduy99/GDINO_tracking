@@ -289,7 +289,8 @@ def compute_aw_max_metric(emb_cost, w_association_emb, bottom=0.5):
 
 
 def associate(
-    detections, trackers, iou_threshold, velocities, previous_obs, vdc_weight, emb_cost, w_assoc_emb, aw_off, aw_param
+    detections, trackers, iou_threshold, velocities, previous_obs, vdc_weight, emb_cost, w_assoc_emb, aw_off, aw_param,
+    mean_sim
 ):
     if len(trackers) == 0:
         return (
@@ -334,7 +335,12 @@ def associate(
                 else:
                     emb_cost *= w_assoc_emb
 
-            final_cost = -(iou_matrix + angle_diff_cost + emb_cost)
+            if mean_sim > 0.7:
+                aaw = (1-mean_sim)/0.3
+                amw = 2 - aaw
+            else:
+                aaw = amw = 1
+            final_cost = -(amw * (iou_matrix + angle_diff_cost) + aaw * emb_cost)
             matched_indices = linear_assignment(final_cost)
     else:
         matched_indices = np.empty(shape=(0, 2))
