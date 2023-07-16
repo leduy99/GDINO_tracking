@@ -168,7 +168,7 @@ def nms(bounding_boxes, confidence_score, threshold=0.6):
 
     return np.array(picked_boxes), np.array(picked_score)
 
-def cal_iou(bbox1, bbox2):
+def cal_iou(bbox1, bbox2, mode='iou'):
     # Tính toán tọa độ của vùng giao nhau (intersection)
     x1 = max(bbox1[0], bbox2[0])
     y1 = max(bbox1[1], bbox2[1])
@@ -183,7 +183,11 @@ def cal_iou(bbox1, bbox2):
     bbox2_area = (bbox2[2] - bbox2[0] + 1) * (bbox2[3] - bbox2[1] + 1)
 
     # Tính toán IoU
-    iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
+    if mode == 'iou':
+        iou = intersection_area / float(bbox1_area + bbox2_area - intersection_area)
+    else:
+        #bbox1 nên là box lớn hơn, nếu ko lớn hơn thì kqua sẽ không đủ cao
+        iou = intersection_area / bbox2_area
 
     return iou
 

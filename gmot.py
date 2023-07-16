@@ -6,6 +6,7 @@ from pathlib import Path
 
 import sys
 import os
+import re
 import cv2
 
 from torchvision import transforms, ops
@@ -24,7 +25,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
-from utils import FilterTools, nms, contains_bbox
+from utils import FilterTools, nms, cal_iou, contains_bbox
 
 import boxmot.ImageBind.data as data
 import torch
@@ -100,16 +101,22 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings
 
+def clean_text(input_text):
+    cleaned_text = re.sub(r'[^a-zA-Z0-9\s]', '', input_text)
+    return cleaned_text
+
 def process_bboxes(detections, phrases, sub_parts, negative_parts):
-    rm_list = []
-    for box_id in range(len(detections.xyxy)):
-        #Check if detected box is the main object
-        if phrases[box_id] in sub_parts:
-            rm_list.append(box_id)
-            continue
-    phrases = np.delete(phrases, rm_list, axis=0)
-    detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-    detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+    if sub_parts != '':
+        rm_list = []
+        for box_id in range(len(detections.xyxy)):
+            #Check if detected box is the main object
+            cls_name = clean_text(phrases[box_id])
+            if (cls_name in sub_parts) or (sub_parts in cls_name):
+                rm_list.append(box_id)
+                continue
+        phrases = np.delete(phrases, rm_list, axis=0)
+        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
 
     rm_list = []
     for box_id in range(len(detections.xyxy)):
@@ -120,7 +127,7 @@ def process_bboxes(detections, phrases, sub_parts, negative_parts):
         # Remove overlapped boxes
         cnt = 0
         for id, box in enumerate(detections.xyxy):
-            if box_id != id and contains_bbox(detections.xyxy[box_id], box):
+            if box_id != id and cal_iou(detections.xyxy[box_id], box, 'min') > 0.85:
                 if negative_parts != '' and negative_parts in phrases[id]:
                     cnt = 2
                 else:
