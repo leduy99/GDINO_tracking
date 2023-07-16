@@ -4,6 +4,7 @@
 from __future__ import print_function
 
 import torch
+import torch.nn.functional as F
 import numpy as np
 from .association import *
 from .cmc import CMCComputer
@@ -433,6 +434,7 @@ class OCSort(object):
         if self.embedding_off or dets.shape[0] == 0 or trk_embs.shape[0] == 0:
             stage1_emb_cost = None
         else:
+            dets_embs = F.normalize(dets_embs, dim=1)
             stage1_emb_cost = dets_embs @ trk_embs.T
         matched, unmatched_dets, unmatched_trks = associate(
             dets,

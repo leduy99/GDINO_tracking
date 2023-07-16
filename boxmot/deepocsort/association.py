@@ -299,6 +299,11 @@ def associate(
             np.empty((0, 5), dtype=int),
         )
 
+    aaw = amw = 1
+    if mean_sim > 0.7:
+        aaw = (1-mean_sim)/0.3
+        amw = 2 - aaw
+
     Y, X = speed_direction_batch(detections, previous_obs)
     inertia_Y, inertia_X = velocities[:, 0], velocities[:, 1]
     inertia_Y = np.repeat(inertia_Y[:, np.newaxis], Y.shape[1], axis=1)
@@ -311,7 +316,7 @@ def associate(
     valid_mask = np.ones(previous_obs.shape[0])
     valid_mask[np.where(previous_obs[:, 4] < 0)] = 0
 
-    iou_matrix = iou_batch(detections, trackers)
+    iou_matrix = amw * iou_batch(detections, trackers)
     scores = np.repeat(detections[:, -1][:, np.newaxis], trackers.shape[0], axis=1)
     # iou_matrix = iou_matrix * scores # a trick sometiems works, we don't encourage this
     valid_mask = np.repeat(valid_mask[:, np.newaxis], X.shape[1], axis=1)
@@ -335,12 +340,7 @@ def associate(
                 else:
                     emb_cost *= w_assoc_emb
 
-            if mean_sim > 0.7:
-                aaw = (1-mean_sim)/0.3
-                amw = 2 - aaw
-            else:
-                aaw = amw = 1
-            final_cost = -(amw * (iou_matrix + angle_diff_cost) + aaw * emb_cost)
+            final_cost = -(iou_matrix + angle_diff_cost + aaw * emb_cost)
             matched_indices = linear_assignment(final_cost)
     else:
         matched_indices = np.empty(shape=(0, 2))
