@@ -211,7 +211,7 @@ def run(args):
         image = None
         frame_idx = 0
 
-        tools = FilterTools(args.num_target, args.long_mems)
+        tools = FilterTools(args.short_mems, args.long_mems)
 
         box_annotator = sv.BoxAnnotator()
         color = [204, 0, 102]
@@ -354,9 +354,8 @@ def parse_opt():
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBase')
     parser.add_argument('--feature-mode', type=str, default='gdino')
-    parser.add_argument('--num-target', type=int, default=0)
-    parser.add_argument('--short-mems', action='store_true', help='re-filter with best embedding')
-    parser.add_argument('--long-mems', action='store_true', help='re-filter with best embedding')
+    parser.add_argument('--short-mems', type=int, default=0, help='re-filter with best embedding')
+    parser.add_argument('--long-mems', type=int, default=0, help='re-filter with best embedding')
     parser.add_argument('--cropped-mems', action='store_true', help='re-filter for occluded objects')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)

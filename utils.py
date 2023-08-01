@@ -5,9 +5,9 @@ import torch
 import numpy as np
 
 class FilterTools():
-    def __init__(self, num_target, two_filters):
-        self.num_target = num_target
-        self.two_filters = two_filters
+    def __init__(self, short_mems, long_mems):
+        self.short_mems = short_mems
+        self.long_mems = long_mems
 
         self.best_conf = None
         self.best_emb = None
@@ -73,13 +73,13 @@ class FilterTools():
         if self.target_mem == None:
             self.target_mem = ref_emb
 
-            if self.two_filters:
+            if self.long_mems > 0:
                 self.best_conf = np.array([ref_conf])
                 self.best_emb = ref_emb
                 self.cropped_embs = cropped_embs
         else:
-            if self.two_filters:
-                if (self.best_emb.size()[0] < 9) and (self.best_conf.min() <= ref_conf):
+            if self.long_mems > 0:
+                if (self.best_emb.size()[0] < self.long_mems) and (self.best_conf.min() <= ref_conf):
                     np.append(self.best_conf , ref_conf)
                     self.best_emb = torch.cat((self.best_emb, ref_emb), dim=0)
                 else:
@@ -91,17 +91,17 @@ class FilterTools():
                 if self.best_conf.max() <= ref_conf:
                     self.cropped_embs = cropped_embs
 
-            if self.target_mem.size()[0] < self.num_target:
+            if self.target_mem.size()[0] < self.short_mems:
                 self.target_mem = torch.cat((self.target_mem, ref_emb), dim=0)
 
-            elif self.target_mem.size()[0] == self.num_target:
+            elif self.target_mem.size()[0] == self.short_mems:
                 self.target_mem = torch.cat((self.target_mem[1:, :], ref_emb), dim=0)
 
         t1_norm = F.normalize(embs, dim=1)
         t2_norm = F.normalize(self.target_mem, dim=1)
         result = torch.mean(torch.mm(t1_norm, t2_norm.t()), dim=1)
 
-        if self.two_filters:
+        if self.long_mems:
             t3_norm = F.normalize(self.best_emb, dim=1)
             best_res = torch.mean(torch.mm(t1_norm, t3_norm.t()), dim=1)
 

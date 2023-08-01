@@ -184,7 +184,7 @@ def run(args):
     image = None
     frame_idx = 0
 
-    tools = FilterTools(args.num_target, args.two_filters)
+    tools = FilterTools(args.short_mems, args.long_mems)
 
     box_annotator = sv.BoxAnnotator()
     color = [204, 0, 102]
@@ -238,55 +238,52 @@ def run(args):
 
         # Sim score theo GDino nhưng average
         # result = roi_align_gdino(detections.xyxy.copy(), feature.tensors, max_idx)
-        mean_vector = torch.mean(embs, dim=0)
-        measures = []
-        print(f'sim của frame {frame_idx}')
-        for idx, emb in enumerate(embs):
-            if idx == max_idx:
-              continue
-            sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
-            measures.append(sim)
-            print(sim, detections.confidence[idx])
-        print('mean là:', np.mean(measures))
-        print('std là:', np.std(measures))
-        print('range là:', np.max(measures) - np.min(measures))
-
 
         # Adaptive Threshold
-        target_conf = np.mean(detections.confidence) - 1.29*np.std(detections.confidence)
-        # num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
-        candidates = np.where((detections.confidence >= target_conf) & (detections.confidence != detections.confidence[max_idx]))
-        target_sim_1 = torch.mean(sims[candidates].cpu() + detections.confidence[candidates])
+        if args.short_mems:
+            target_conf = np.mean(detections.confidence) - 1.29*np.std(detections.confidence)
+            num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
+            target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
 
-        # Two-level filter
-        rm_list = []
-        for idx, conf in enumerate(detections.confidence):
-            if conf < target_conf:
-                # Level 2 is optional, sometimes it is better with only one level
-                if sims[idx] < target_sim_1:
-                  
-                    if args.two_filters:
-                        target_sim_2 = torch.mean(best_sims[candidates].cpu() + detections.confidence[candidates])
-                        if best_sims[idx] < target_sim_2:
+            # Two-level filter
+            rm_list = []
+            for idx, conf in enumerate(detections.confidence):
+                if conf < target_conf:
+                    # Level 2 is optional, sometimes it is better with only one level
+                    if sims[idx] < target_sim_1:
+                    
+                        if args.long_mems:
+                            target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), 
+                                                        descending=True)[0][1:num_k])
+                            if best_sims[idx] < target_sim_2:
+                            
+                                if args.cropped_mems:
+                                    target_sim_3 = torch.mean(torch.sort(cropped_sims.detach()
+                                                        .clone(), descending=True)[0][1:num_k])
+                                    if cropped_sims[idx] < target_sim_3:
+                                        rm_list.append(idx)
+                                else:
+                                      rm_list.append(idx)
 
-                            if args.cropped_filters:
-                                target_sim_3 = torch.mean(cropped_sims[candidates].cpu() + detections.confidence[candidates])
-                                if cropped_sims[idx] < target_sim_3:
-                                    rm_list.append(idx)
-                            else:
-                                  rm_list.append(idx)
+                        else:
+                            rm_list.append(idx)
 
-                    else:
-                        rm_list.append(idx)
-        
-        # Delete filtered objects
-        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
-        embs = delete_by_index(embs, rm_list)
-        sims = delete_by_index(sims, rm_list).cpu().detach().numpy()
-        max_idx = detections.confidence.argmax()
+            # Delete filtered objects
+            detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+            detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+            embs = delete_by_index(embs, rm_list)
+            sims = delete_by_index(sims, rm_list)
+            max_idx = detections.confidence.argmax()
 
-        outputs = tracker.update(detections, sims, embs.cpu(), image)
+        #Feed data into tracker
+        # sims = sims.cpu().detach().numpy()
+        mean_vector = torch.mean(embs, dim=0)
+        measures = []
+        for idx, emb in enumerate(embs):
+            sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
+            measures.append(sim)
+
+        outputs = tracker.update(detections, measures, embs.cpu(), image)
 
         if len(outputs) > 0:
             for j, output in enumerate(outputs):
@@ -333,9 +330,9 @@ def parse_opt():
     parser.add_argument('--sub-part', type=str, default='')
     parser.add_argument('--negative-part', type=str, default='')
     parser.add_argument('--feature-mode', type=str, default='gdino')
-    parser.add_argument('--num-target', type=int, default=0)
-    parser.add_argument('--two-filters', action='store_true', help='re-filter with best embedding')
-    parser.add_argument('--cropped-filters', action='store_true', help='re-filter for occluded objects')
+    parser.add_argument('--short-mems', type=int, default=0, help='re-filter with best embedding')
+    parser.add_argument('--long-mems', type=int, default=0, help='re-filter with best embedding')
+    parser.add_argument('--cropped-mems', action='store_true', help='re-filter for occluded objects')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()
