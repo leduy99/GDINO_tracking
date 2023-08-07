@@ -191,7 +191,6 @@ def run(args):
             os.makedirs(parent_txt_path)
 
         txt_path = os.path.join(parent_txt_path, folder_name + '.txt')
-        open(txt_path, 'w').close()
 
         # Init Tracker
         tracking_config = \
@@ -267,33 +266,36 @@ def run(args):
 
 
             # Adaptive Threshold
-            if args.short_mems:
+            if (args.short_mems > 0) or (args.long_mems > 0):
                 target_conf = np.mean(detections.confidence) - 1.29*np.std(detections.confidence)
                 num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
-                target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
 
                 # Two-level filter
                 rm_list = []
                 for idx, conf in enumerate(detections.confidence):
                     if conf < target_conf:
                         # Level 2 is optional, sometimes it is better with only one level
-                        if sims[idx] < target_sim_1:
-                        
-                            if args.long_mems:
-                                target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), 
-                                                            descending=True)[0][1:num_k])
-                                if best_sims[idx] < target_sim_2:
-                                
-                                    if args.cropped_mems:
-                                        target_sim_3 = torch.mean(torch.sort(cropped_sims.detach()
-                                                            .clone(), descending=True)[0][1:num_k])
-                                        if cropped_sims[idx] < target_sim_3:
-                                            rm_list.append(idx)
-                                    else:
-                                          rm_list.append(idx)
+                        if args.short_mems > 0:
+                          target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
+                          if sims[idx] < target_sim_1:
+                              rm_list.append(idx)
 
-                            else:
-                                rm_list.append(idx)
+                        if args.long_mems > 0:
+                          target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), 
+                                                      descending=True)[0][1:num_k])
+                          if best_sims[idx] < target_sim_2:
+                          
+                              if args.cropped_mems:
+                                  target_sim_3 = torch.mean(torch.sort(cropped_sims.detach()
+                                                      .clone(), descending=True)[0][1:num_k])
+                                  if cropped_sims[idx] < target_sim_3:
+                                      rm_list.append(idx)
+                              else:
+                                    rm_list.append(idx)
+                          else:
+                              if args.short_mems > 0:
+                                  rm_list.remove(idx)
+
 
                 # Delete filtered objects
                 detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
