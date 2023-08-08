@@ -161,10 +161,12 @@ def plot_one_box(x, img, color=None, label=None, line_thickness=3):
 @torch.no_grad()
 def run(args):
 
-    for folder_name in sorted(os.listdir(args.source)):
+    with open(args.source, "r") as f:
+      for line in f:
+        folder_name = line
         print(f'start tracking {folder_name}')
         
-        src_folder = os.path.join(args.source, folder_name, 'img1')
+        src_folder = os.path.join('/content/val', folder_name, 'img1')
         dest_folder = os.path.join(args.save_dir, 'img', folder_name)
         if not os.path.exists(dest_folder):
             os.makedirs(dest_folder)
