@@ -1,10 +1,12 @@
 import argparse
 import numpy as np
 from numpy import random
+from numpy.linalg import norm
 from pathlib import Path
 
 import sys
 import os
+import re
 import cv2
 
 from torchvision import transforms, ops
@@ -23,7 +25,7 @@ if str(ROOT / 'boxmot' / 'ImageBind') not in sys.path:
     sys.path.append(str(ROOT / 'boxmot' / 'ImageBind'))  # add ImageBind ROOT to PATH
 
 from groundingdino.util.inference import Model
-from utils import FilterTools, nms
+from utils import FilterTools, nms, cal_iou, contains_bbox
 
 import boxmot.ImageBind.data as data
 import torch
@@ -99,6 +101,49 @@ def retriev_vision_and_vision(elements, ref_pos, text_list=['']):
     vision_referring_result = F.cosine_similarity(cropped_box_embeddings, referring_embeddings)
     return vision_referring_result, cropped_box_embeddings
 
+def clean_text(input_text):
+    cleaned_text = re.sub(r'[^a-zA-Z0-9\s]', '', input_text)
+    return cleaned_text
+
+def process_bboxes(detections, phrases, sub_parts, negative_parts):
+    if sub_parts != '':
+        rm_list = []
+        for box_id in range(len(detections.xyxy)):
+            #Check if detected box is the main object
+            cls_name = clean_text(phrases[box_id])
+            if (cls_name in sub_parts) or (sub_parts in cls_name):
+                rm_list.append(box_id)
+                continue
+        phrases = np.delete(phrases, rm_list, axis=0)
+        detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+        detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+
+    rm_list = []
+    for box_id in range(len(detections.xyxy)):
+        if negative_parts != '' and negative_parts in phrases[box_id]:
+            rm_list.append(box_id)
+            continue
+
+        # Remove overlapped boxes
+        cnt = 0
+        for id, box in enumerate(detections.xyxy):
+            if box_id != id and cal_iou(detections.xyxy[box_id], box, 'min') > 0.85:
+                if negative_parts != '' and negative_parts in phrases[id]:
+                    cnt = 2
+                else:
+                    cnt += 1
+                if cnt > 1:
+                    break
+        if cnt > 1:
+            rm_list.append(box_id)
+
+    phrases = np.delete(phrases, rm_list, axis=0)
+    detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+    detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+    detections.xyxy, detections.confidence = nms(detections.xyxy, detections.confidence, 0.45)
+
+    return detections, phrases
+
 def plot_one_box(x, img, color=None, label=None, line_thickness=3):
     # Plots one bounding box on image img
     tl = line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1  # line/font thickness
@@ -148,17 +193,21 @@ def run(args):
 
         detections = None
         image = None
-        frame_idx = 0
+        frame_idx = 1
 
-        tools = FilterTools(args.num_target, args.two_filters)
+        tools = FilterTools(args.short_mems, args.long_mems)
 
         box_annotator = sv.BoxAnnotator()
         color = [204, 0, 102]
 
         # Construct text prompt
-        text_prompt = args.main_object
-        if args.sub_part != '':
-            text_prompt = f'{text_prompt} has {args.sub_part}'
+        sub_parts = ''
+        negative_parts = ''
+        text_prompt = 'person'
+        if sub_parts != '':
+            text_prompt = f'{text_prompt} has {sub_parts}'
+        if negative_parts != '':
+            text_prompt = f'{text_prompt}. {negative_parts}'
 
         for img in sorted(os.listdir(src_folder)):
         
@@ -180,37 +229,10 @@ def run(args):
             detections, phrases, feature = grounding_dino_model.predict_with_caption(
                 image=image, 
                 caption=text_prompt, 
-                box_threshold=0.2, 
+                box_threshold=0.3, 
                 text_threshold=0.2
             )
-
-            rm_list = []
-            for box_id in range(len(detections.xyxy)):
-                #Check if detected box is the main object
-                if phrases[box_id] not in args.main_object:
-                    rm_list.append(box_id)
-                    continue
-            detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-            detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
-
-            rm_list = []
-            for box_id in range(len(detections.xyxy)):
-                # Remove overlapped boxes
-                xo1, yo1, xo2, yo2 = detections.xyxy[box_id] 
-                cnt = 0
-                for box in detections.xyxy:
-                    xi1, yi1, xi2, yi2 = box
-                    if cnt > 1:
-                        break
-                    if xi1 >= xo1 and yi1 >= yo1 and xi2 <= xo2 and yi2 <= yo2:
-                        cnt += 1
-                if cnt > 1:
-                    rm_list.append(box_id)
-
-            detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-            detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
-
-            detections.xyxy, detections.confidence = nms(detections.xyxy, detections.confidence, 0.45)
+            detections, phrases = process_bboxes(detections, phrases, sub_parts, negative_parts)
             max_idx = detections.confidence.argmax()
 
             if args.feature_mode != "gdino":
@@ -223,7 +245,7 @@ def run(args):
                 sims, embs = retriev_vision_and_vision(crops, max_idx)
             else:
                 # Sim score theo GDino
-                sims, best_sims, embs = tools.feature_sim_from_gdino(detections.xyxy, feature, max_idx,
+                sims, best_sims, cropped_sims, embs = tools.feature_sim_from_gdino(detections.xyxy, feature, max_idx,
                                                                       detections.confidence[max_idx])
 
             # Sim score theo GDino nhưng average
@@ -231,33 +253,54 @@ def run(args):
 
 
             # Adaptive Threshold
-            target_conf = (detections.confidence.max() - 0.2) * 0.2 + 0.2
-            num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
-            target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
+            if (args.short_mems > 0) or (args.long_mems > 0):
+                target_conf = np.mean(detections.confidence) - 1.29*np.std(detections.confidence)
+                num_k = sum(map(lambda x : x >= target_conf, detections.confidence)) - 1
 
-            # Two-level filter
-            rm_list = []
-            for idx, conf in enumerate(detections.confidence):
-                if conf < target_conf:
-                    # Level 2 is optional, sometimes it is better with only one level
-                    if sims[idx] < target_sim_1:
+                # Two-level filter
+                rm_list = []
+                for idx, conf in enumerate(detections.confidence):
+                    if conf < target_conf:
+                        # Level 2 is optional, sometimes it is better with only one level
+                        if args.short_mems > 0:
+                          target_sim_1 = torch.mean(torch.sort(sims.detach().clone(), descending=True)[0][1:num_k])
+                          if sims[idx] < target_sim_1:
+                              rm_list.append(idx)
 
-                        if args.two_filters:
-                            target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), descending=True)[0][1:num_k])
-                            if best_sims[idx] < target_sim_2:
-                                rm_list.append(idx)
+                        if args.long_mems > 0:
+                          target_sim_2 = torch.mean(torch.sort(best_sims.detach().clone(), 
+                                                      descending=True)[0][1:num_k])
+                          if best_sims[idx] < target_sim_2:
+                          
+                              if args.cropped_mems:
+                                  target_sim_3 = torch.mean(torch.sort(cropped_sims.detach()
+                                                      .clone(), descending=True)[0][1:num_k])
+                                  if cropped_sims[idx] < target_sim_3:
+                                      rm_list.append(idx)
+                              else:
+                                    rm_list.append(idx)
+                          else:
+                              if args.short_mems > 0:
+                                  if idx in rm_list:
+                                      rm_list.remove(idx)
 
-                        else:
-                            rm_list.append(idx)
 
-            # Delete filtered objects
-            detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
-            detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
-            embs = delete_by_index(embs, rm_list)
-            sims = delete_by_index(sims, rm_list).cpu().detach().numpy()
-            max_idx = detections.confidence.argmax()
+                # Delete filtered objects
+                detections.xyxy = np.delete(detections.xyxy, rm_list, axis=0)
+                detections.confidence = np.delete(detections.confidence, rm_list, axis=0)
+                embs = delete_by_index(embs, rm_list)
+                sims = delete_by_index(sims, rm_list)
+                max_idx = detections.confidence.argmax()
 
-            outputs = tracker.update(detections, sims, embs.cpu(), image)
+            #Feed data into tracker
+            # sims = sims.cpu().detach().numpy()
+            mean_vector = torch.mean(embs, dim=0)
+            measures = []
+            for idx, emb in enumerate(embs):
+                sim = torch.nn.functional.cosine_similarity(mean_vector, emb, dim=-1).cpu()
+                measures.append(sim)
+              
+            outputs = tracker.update(detections, measures, embs.cpu(), image)
 
             if len(outputs) > 0:
                 for j, output in enumerate(outputs):
@@ -276,7 +319,7 @@ def run(args):
                         bbox_h = output[3] - output[1]
                         # Write MOT compliant results to file
                         with open(txt_path, 'a') as f:
-                            f.write(('%g,' * 9 + '%g' + '\n') % (frame_idx + 1, id, bbox_left,  # MOT format
+                            f.write(('%g,' * 9 + '%g' + '\n') % (frame_idx, id, bbox_left,  # MOT format
                                                                    bbox_top, bbox_w, bbox_h, conf, -1, -1, -1))
 
                     c = int(cls)  # integer class
@@ -293,12 +336,11 @@ def parse_opt():
     parser.add_argument('--tracking-method', type=str, default='deepocsort', help='deepocsort, botsort, strongsort, ocsort, bytetrack')
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
-    parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/DanceTrack/')
-    parser.add_argument('--main-object', type=str, default='')
-    parser.add_argument('--sub-part', type=str, default='')
+    parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBase')
     parser.add_argument('--feature-mode', type=str, default='gdino')
-    parser.add_argument('--num-target', type=int, default=0)
-    parser.add_argument('--two-filters', action='store_true', help='re-filter with best embedding')
+    parser.add_argument('--short-mems', type=int, default=0, help='re-filter with best embedding')
+    parser.add_argument('--long-mems', type=int, default=0, help='re-filter with best embedding')
+    parser.add_argument('--cropped-mems', action='store_true', help='re-filter for occluded objects')
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--end-frame', type=int, default=0)
     opt = parser.parse_args()
