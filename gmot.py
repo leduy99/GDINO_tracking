@@ -294,7 +294,8 @@ def run(args):
                                     rm_list.append(idx)
                           else:
                               if args.short_mems > 0:
-                                  rm_list.remove(idx)
+                                  if len(rm_list) > 0:
+                                      rm_list.remove(idx)
 
 
                 # Delete filtered objects
