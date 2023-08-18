@@ -294,7 +294,7 @@ def run(args):
                                     rm_list.append(idx)
                           else:
                               if args.short_mems > 0:
-                                  if len(rm_list) > 0:
+                                  if idx in rm_list:
                                       rm_list.remove(idx)
 
 
