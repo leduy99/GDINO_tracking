@@ -7,6 +7,7 @@ from boxmot.ocsort.ocsort import OCSort as OCSORT
 from boxmot.bytetrack.byte_tracker import BYTETracker
 from boxmot.botsort.bot_sort import BoTSORT
 from boxmot.deepocsort.ocsort import OCSort as DeepOCSORT
+from boxmot.macsortv2.ocsort import OCSort as MACSORTv2
 from boxmot.deep.reid_multibackend import ReIDDetectMultiBackend
 
 from boxmot.tracker_zoo import create_tracker, get_tracker_config
@@ -19,4 +20,4 @@ WEIGHTS = ROOT / 'weights'
 
 
 __all__ = '__version__', 'StrongSORT', 'OCSORT', 'BYTETracker', 'BoTSORT',\
-          'DeepOCSORT'  # allow simpler import
+          'DeepOCSORT', 'MACSORTv2'  # allow simpler import

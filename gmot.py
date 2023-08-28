@@ -352,7 +352,7 @@ def run(args):
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--tracking-method', type=str, default='deepocsort', help='deepocsort, botsort, strongsort, ocsort, bytetrack')
+    parser.add_argument('--tracking-method', type=str, default='macsortv2', help='deepocsort, botsort, strongsort, ocsort, bytetrack')
     parser.add_argument('--source', type=str, default='0', help='file/dir/URL/glob, 0 for webcam')  
     parser.add_argument('--save-txt', action='store_false', help='save tracking results in a txt file')
     parser.add_argument('--save-dir', type=str, default='/content/drive/MyDrive/FPT-AI/GDinoBase')

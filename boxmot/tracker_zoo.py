@@ -84,6 +84,19 @@ def create_tracker(tracker_type, tracker_config, device):
             inertia=cfg.deepocsort.inertia,
         )
         return deepocsort
+    elif tracker_type == 'macsortv2':
+        from boxmot.macsortv2.ocsort import OCSort
+        macsortv2 = OCSort(
+            device,
+            det_thresh=cfg.macsortv2.det_thresh,
+            max_age=cfg.macsortv2.max_age,
+            min_hits=cfg.macsortv2.min_hits,
+            iou_threshold=cfg.macsortv2.iou_thresh,
+            delta_t=cfg.macsortv2.delta_t,
+            asso_func=cfg.macsortv2.asso_func,
+            inertia=cfg.macsortv2.inertia,
+        )
+        return macsortv2
     else:
         print('No such tracker')
         exit()
